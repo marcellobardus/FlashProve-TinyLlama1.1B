@@ -102,6 +102,11 @@ def read_header(path):
         if not isinstance(dtype, str):
             raise SafetensorsError("tensor {!r} has a non-string dtype".format(name))
 
+        if dtype not in DTYPE_ITEMSIZE:
+            raise SafetensorsError(
+                "tensor {!r} has unknown dtype {!r}".format(name, dtype)
+            )
+
         if not isinstance(shape, list):
             raise SafetensorsError("tensor {!r} has a non-list shape".format(name))
         for dim in shape:
@@ -124,15 +129,14 @@ def read_header(path):
                 "tensor {!r} has data_offsets outside 0 <= begin <= end".format(name)
             )
 
-        itemsize = DTYPE_ITEMSIZE.get(dtype)
-        if itemsize is not None:
-            expected = math.prod(shape) * itemsize
-            if end - begin != expected:
-                raise SafetensorsError(
-                    "tensor {!r} has {} bytes but {} are required".format(
-                        name, end - begin, expected
-                    )
+        itemsize = DTYPE_ITEMSIZE[dtype]
+        expected = math.prod(shape) * itemsize
+        if end - begin != expected:
+            raise SafetensorsError(
+                "tensor {!r} has {} bytes but {} are required".format(
+                    name, end - begin, expected
                 )
+            )
 
         if end > data_size:
             raise SafetensorsError(
@@ -231,42 +235,46 @@ def _expected_from_manifest(manifest):
     return expected
 
 
-def iter_tensors(path, manifest=None, check_header_sha256=True, finite_only=True):
+def iter_tensors(path, manifest, check_header_sha256=True, finite_only=True):
     """Yield (name, float32 array) in sorted name order."""
+    if manifest is None:
+        raise SafetensorsError("a manifest is required")
+    return _iter_tensors(path, manifest, check_header_sha256, finite_only)
+
+
+def _iter_tensors(path, manifest, check_header_sha256, finite_only):
     header_bytes, header, data_start = read_header(path)
     actual_names = set(header) - {_METADATA_KEY}
 
-    expected = None
-    if manifest is not None:
-        source = manifest.get("model_safetensors", {})
-        if check_header_sha256:
-            expected_sha = source.get("header_json_sha256")
-            if not isinstance(expected_sha, str):
-                raise SafetensorsError("manifest has no header sha256")
-            actual_sha = hashlib.sha256(header_bytes).hexdigest()
-            if actual_sha.lower() != expected_sha.lower():
-                raise SafetensorsError(
-                    "header sha256 mismatch: expected {}, got {}".format(
-                        expected_sha, actual_sha
-                    )
+    source = manifest.get("model_safetensors", {})
+    if check_header_sha256:
+        expected_sha = source.get("header_json_sha256")
+        if not isinstance(expected_sha, str):
+            raise SafetensorsError("manifest has no header sha256")
+        actual_sha = hashlib.sha256(header_bytes).hexdigest()
+        if actual_sha.lower() != expected_sha.lower():
+            raise SafetensorsError(
+                "header sha256 mismatch: expected {}, got {}".format(
+                    expected_sha, actual_sha
                 )
+            )
 
-        expected = _expected_from_manifest(manifest)
-        if actual_names != set(expected):
-            raise SafetensorsError("tensor names do not match the manifest")
+    expected = _expected_from_manifest(manifest)
+    if actual_names != set(expected):
+        raise SafetensorsError("tensor names do not match the manifest")
 
-        declared_count = source.get("tensor_count", manifest.get("tensor_count"))
-        if declared_count is not None:
-            if declared_count != len(expected) or declared_count != len(actual_names):
-                raise SafetensorsError("tensor count does not match the manifest")
+    declared_count = source.get("tensor_count", manifest.get("tensor_count"))
+    if declared_count is not None:
+        if declared_count != len(expected) or declared_count != len(actual_names):
+            raise SafetensorsError("tensor count does not match the manifest")
 
-        for name in sorted(actual_names):
-            want_dtype, want_shape = expected[name]
-            entry = header[name]
-            if entry["dtype"] != want_dtype or tuple(entry["shape"]) != tuple(want_shape):
-                raise SafetensorsError(
-                    "tensor {!r} does not match the manifest dtype or shape".format(name)
-                )
+    for name in sorted(actual_names):
+        want_dtype, want_shape = expected[name]
+        entry = header[name]
+        if entry["dtype"] != want_dtype or tuple(entry["shape"]) != tuple(want_shape):
+            raise SafetensorsError(
+                "tensor {!r} does not match the manifest dtype or shape".format(name)
+            )
 
     for name in sorted(actual_names):
         array = read_tensor(path, name, (header, data_start))
