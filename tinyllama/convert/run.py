@@ -416,3 +416,7 @@ def _run(args, argv):
 
     print(artifact_id)
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
