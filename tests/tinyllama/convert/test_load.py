@@ -7,7 +7,13 @@ import pytest
 
 from tinyllama import contract
 from tinyllama import manifest as manifest_module
-from tinyllama.convert.load import SafetensorsError, iter_tensors, read_header, read_tensor
+from tinyllama.convert.load import (
+    DTYPE_ITEMSIZE,
+    SafetensorsError,
+    iter_tensors,
+    read_header,
+    read_tensor,
+)
 from tinyllama.manifest import (
     ManifestMismatch,
     check_file_sha256,
@@ -214,6 +220,21 @@ def test_read_header_rejects_non_string_dtype(tmp_path):
         read_header(path)
 
 
+@pytest.mark.parametrize("dtype", ["X99", "F64"])
+def test_read_header_rejects_unknown_dtype(tmp_path, dtype):
+    assert dtype not in DTYPE_ITEMSIZE
+    path = _write_raw(
+        tmp_path / "unknown-dtype.safetensors",
+        _tensor_header({"dtype": dtype, "shape": [0], "data_offsets": [0, 0]}),
+        b"",
+    )
+    with pytest.raises(SafetensorsError) as excinfo:
+        read_header(path)
+
+    assert "t" in str(excinfo.value)
+    assert dtype in str(excinfo.value)
+
+
 @pytest.mark.parametrize("shape", [1, [-1], [True], [1.5]])
 def test_read_header_rejects_bad_shape(tmp_path, shape):
     path = _write_raw(
@@ -353,6 +374,16 @@ def test_iter_tensors_rejects_tensor_count_mismatch(tmp_path):
 
     with pytest.raises(SafetensorsError):
         list(iter_tensors(path, manifest))
+
+
+def test_iter_tensors_requires_manifest(tmp_path):
+    path = tmp_path / "no-manifest.safetensors"
+
+    with pytest.raises(SafetensorsError, match="a manifest is required"):
+        iter_tensors(path, None)
+
+    with pytest.raises(TypeError):
+        iter_tensors(path)
 
 
 def test_iter_tensors_yields_sorted_names(tmp_path):
