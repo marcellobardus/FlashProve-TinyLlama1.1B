@@ -140,6 +140,8 @@ base `9e2bdd8f` unless a path is under `work/scratch/` (git ignored probe files,
 - D33 (lead, 2026-11-05). P1 logits criterion: relative max difference (max abs difference divided by max abs float logit) at most 1e-3 over all 24 positions, AND the same next token at the last position; the absolute difference and both tokens stay in the report. Reason: float32 over 22 layers with a different summation order makes 1e-3 absolute too tight for logits of size 10 to 20. The threshold is not tuned on results: if it fails, report the numbers and decide.
 - D34 (lead, 2026-11-05). P4 covers both sets (held-out first, then fit) by default in range_report; the pod run uses `--sets both --workers 8`.
 
+- D35 (lead, 2026-11-05). Run 3 on pod roensk5w2gn6am with code 7918753d (work/pod_reports/2026-11-05-run3/) supersedes the run 2 artifact f72efbe3..., the P0 hash 50500da8... and the run 2 quality numbers. Run 3 results: artifact 1d8e5cf46c89d951c1c449dc3c03d963f32176360a016d78e4d2537d39b088a9; P1 PASS under D33 (relative 2.13e-06); P5 ok with transformers 4.57.6 (closes O6 for the pinned 4.x environment); P0 twice equal lam_last_sha256 11517557b8c71f8273d58592781d0c377f187ee21d51cded5731dda4687a86c7, token 1576 equal to float; P4 0 range failures on held-out (8 windows) and fit (32 windows). Pod time 206.85 min, about 1.10 USD.
+
 ## Open items
 
 - O1 (open, Marcello, deferred by D1). Proof compatibility of a dense TinyLlama. Needs at least: a dense

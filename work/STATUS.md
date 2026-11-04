@@ -89,11 +89,27 @@ Branch `feature/tinyllama-integer-audit` from main `9e2bdd8f`. Not pushed.
 - Unfixed nits 14 to 16 of the review (dead branch, sort tie rule, rename race) are optional.
 - Pod: start retries every 30 min fail (host out of vCPU or memory); first failure 16:54 Almaty. Marcello chose to keep retrying the same pod (no replacement).
 
-## 2026-11-05 first real-weights run on the pod (partly done)
+## 2026-11-05 run 3 on the pod (done)
+
+Source: work/pod_reports/2026-11-05-run3/ (NOTES.md, reports, logs, collect). Code HEAD 7918753d. Pod roensk5w2gn6am restarted 00:28:21 Almaty after 2 failed starts (host out of vCPU), stopped 03:55:12 Almaty, EXITED verified. Pod time 206.85 min, about 1.10 USD at 0.32 USD/hr. Versions: Python 3.13.18, torch 2.9.1+cpu, transformers 4.57.6, tokenizers 0.22.2, numpy 2.5.4, pyarrow 26.0.1, huggingface_hub 0.36.2, safetensors 0.8.0.
+
+These numbers supersede every run 2 number that depended on calibration (artifact f72efbe3..., P0 hash 50500da8..., run 2 quality runs, D28).
+
+- P3 PASS, P2 PASS, P5 ok (transformers 4.57.6, all 4 prompts, both id lists ok, first difference none; calibration ok), P1 PASS (relative max difference 2.13e-06, absolute 6.75e-05, last-position token 1576 for both).
+- Conversion rc 0, wall 10:07.78, peak RSS 3,497,016 KB. Artifact id 1d8e5cf46c89d951c1c449dc3c03d963f32176360a016d78e4d2537d39b088a9.
+- P0 integer run twice: next token 1576 ('The') both runs, lam_last_sha256 11517557b8c71f8273d58592781d0c377f187ee21d51cded5731dda4687a86c7 in both (equal), 26.60 s and 26.30 s. Float greedy token 1576, equal. P1 prompt token 29903 (39.48 s), P2 prompt token 8241 (57.80 s), P3 prompt token 2008 (27.41 s).
+- bench_layer: 0.817057 s per layer, peak 463,200 KiB.
+- P4 range report, held-out set, 8 windows x 1024, 8 workers: 0 range failures, wall 25:53.79, peak RSS 2,954,884 KB, 1364.7 to 1377.4 s per window.
+- P4 range report, fit set, 32 windows x 1024, 8 workers: 0 range failures, float_over_limit empty, wall 1:43:45, peak RSS 3,023,000 KB, finished 03:47:33 Almaty.
+- quality_eval 1 window x 32 positions, held-out: top-1 0.96875, mean KL 0.00294755, perplexity float 55.1761, integer 56.2058, 0 range failures (per prompt top-1: P0 0.958333, P1 0.96875, P2 1, P3 0.96).
+- quality_eval 2 windows x 128 positions, held-out: top-1 0.964844, mean KL 0.00326272, perplexity float 26.0374, integer 26.2776, 0 range failures (per prompt top-1: P0 0.958333, P1 0.972973, P2 1, P3 0.96).
+- Not run: the full 8 x 1024 quality evaluation and the full test suite on the pod.
+
+## 2026-11-05 first real-weights run on the pod (run 2, superseded by run 3)
 
 Source: work/pod_reports/2026-11-04-run2/ (NOTES.md, reports, logs). Code HEAD c321c124. Pod roensk5w2gn6am (cpu3g, 8 vCPU, 32 GB, 0.32 USD/hr, EUR-IS-1), running 22:08:55 to 23:43:25 Almaty (94.5 min, about 0.50 USD), stopped, EXITED verified. Old pod l925odnw8dlhn1 terminated. Versions: Python 3.13.18, torch 2.9.1+cpu, transformers 5.22.1, tokenizers 0.23.3, numpy 2.5.4, pyarrow 26.0.1, huggingface_hub 2.4.0, safetensors 0.8.0.
 
-- SUPERSEDED (D28): the artifact f72efbe3..., the P0 hash and the quality numbers below were produced with calibration maxima made without the 1/sqrt(dh) score scale. Do not quote them as results. P2 and P3 do not depend on calibration and stand.
+- SUPERSEDED (D28, and by run 3 above): the artifact f72efbe3..., the P0 hash and the quality numbers below were produced with calibration maxima made without the 1/sqrt(dh) score scale. Do not quote them as results. P2 and P3 do not depend on calibration and stand.
 - P3 passed (model sha256 6e6001da...4933, size 2,200,119,864). P2 passed at e_res 11 (201 tensors, no failures).
 - P5 not ok: calibration inputs match (fit sha256 9b2b8fc6...2fa31, held-out 5c9da767...3bfb8), the prompt check failed under transformers 5.22.1 (D29, O6).
 - P1 failed at the logits check (D28). Layer 0 scores passed.
