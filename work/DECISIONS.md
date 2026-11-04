@@ -44,8 +44,12 @@ base `9e2bdd8f` unless a path is under `work/scratch/` (git ignored probe files,
   primary mode takes n <= T real tokens with no padding (as Lean's `model`, docs/model.md:289-290); window mode
   pads to T = 1024 with id 0. Test: logits at every real position are equal, integer for integer, in both modes.
 - D7 (resolved). Heavy work (download, conversion, calibration, model-dependent tests, quality evaluation) runs on
-  a RunPod cpu3g-8-32 pod approved by Marcello. Nothing heavy on the shared box. No pod has been created by this
-  step.
+  a RunPod cpu3g-8-32 pod approved by Marcello. Nothing heavy on the shared box.
+  RunPod pod (created 2026-11-04 14:38 Asia/Almaty, UTC+5): id l925odnw8dlhn1, flavor cpu3g-8-32 (8 vCPU,
+  32 GB RAM), secure cloud, 0.32 USD/hr as reported by the API, image
+  runpod/pytorch:1.5.1-cu1281-torch280-ubuntu2204, 50 GB container disk, no volume. SSH with a dedicated key
+  only; no secrets, host, port or API key are recorded in git. The pod is stopped when idle. Unverified caveats:
+  a stop may wipe the container disk (no volume), and the public SSH port may change on restart.
 - D8 (resolved, lead). Calibration set `TL-CAL-1`: 32 windows of 1024 ids from the WikiText-2 raw training
   split, made with FlashProve's own sampling rule, steps 1 to 4 (scales/make_calibration_set.py:223-262), with
   TinyLlama's tokenizer. Fully specified in docs/tinyllama/INTERFACES.md, I4.3. Rationale: (1) TinyLlama's
@@ -56,6 +60,9 @@ base `9e2bdd8f` unless a path is under `work/scratch/` (git ignored probe files,
   tokenizer reproduce FlashProve's DRAWS_SHA256 8cd63f61... (work/STATUS.md). License: WikiText is
   CC BY-SA 3.0 and GFDL (dataset card at the pinned revision); the derived id windows stay out of git, only
   their sha256 is committed. 8 more windows from the same ids are held out for range validation only.
+- D10 (resolved, lead, answers to W1 questions). (1) Scaling by a power of two is exact in float32 unless it
+  overflows. (2) A zero gamma is allowed: contract P2 says gamma is zero or within 2^-64 .. 2^64.
+  (3) iter_tensors must require a manifest; None is not accepted (W1 follow-up in T1.4).
 - D9 (decided by brief). No edits to existing FlashProve sources on this branch; new code under tinyllama/ and
   tests/tinyllama/.
 

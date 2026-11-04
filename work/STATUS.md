@@ -36,11 +36,20 @@ Branch `feature/tinyllama-integer-audit` from main `9e2bdd8f`. Not pushed.
 - Commands: `work/scratch/venv/bin/python work/scratch/prompt_probe.py work/scratch/prompts_draft.json` and `prompt_write.py`: P0 24 ids (sha256 cf21aeeb...), P1 37, P2 57, P3 25; rendered text ends with `<|assistant|>\n`; chat template sha256 66291cf0... and tokenizer.json sha256 bcd04f0e... equal the manifest.
 - Updated work/TASKS.md: file ownership without overlap, new tasks T1.5, T3.4, T3.5, pod checks P1 to P5.
 
+## 2026-11-04 W1 and W3 results, integration (done)
+
+- W1 (branch feature/tinyllama-w1-converter): a9459928 reader, constants, manifest; 1f2eae04 permutation, gain folding. `python3 -m pytest tests/tinyllama/convert -q`: 69 passed. Weak spots for the next W1 round: iter_tensors accepts a None manifest; read_header does not refuse unknown dtypes.
+- W3 (branch feature/tinyllama-w3-tests): 361f8850 arithmetic golden vectors, `python3 -m pytest tests/tinyllama/arithmetic -q`: 156 passed, 1 skipped (test_reference_conformance.py, tinyllama.reference not importable); 55f3092d table recipes and digests, `python3 -m pytest tests/tinyllama/test_tables.py -q`: 20 passed. trope, texp and tsilu rebuild exactly from the contract's float64 recipe and match FlashProve scales/policy_tables.py. W3 reported negative checks: the tests fail when vectors are perturbed. Gaps: no full-layer or attention end-to-end vector, no rotary multiply then rq vector; the conformance test skips if primitive names differ (names now fixed in INTERFACES.md I7).
+- Integration: merges 31ae63fb (W1) and c06d05c6 (W3) on feature/tinyllama-integer-audit. `python3 -m pytest tests/tinyllama -q`: 245 passed, 1 skipped on the box.
+- opencode notes: DeepSeek-V4.1-Flash worked for W1 in about 3 to 3.5 minutes per task; GLM-5.3 stalled twice on long outputs for W1 but worked for W3 (about 22 to 24 minutes per task).
+- Docs: contract section 6 column renamed to "sha256 of table words"; INTERFACES.md I7 added.
+- Next: W2 T2.1.
+
 ## Blockers
 
 - Proof: verifier standard form requires NE > 0 (`routed-experts`); dense TinyLlama cannot reach `YES` without an agreed change. D1 resolved as option a: proof compatibility deferred (O1).
-- Compute: heavy work on the RunPod cpu3g-8-32 pod (D7). No pod created yet.
+- Compute: heavy work on the RunPod cpu3g-8-32 pod (D7). Pod created 2026-11-04 (D7, docs/tinyllama/REPRODUCE.md).
 
 ## Remote compute
 
-RunPod cpu3g-8-32 approved by Marcello (D7). No resources created by this step.
+RunPod cpu3g-8-32 approved by Marcello (D7). Pod l925odnw8dlhn1 created 2026-11-04 14:38 Asia/Almaty (UTC+5); see D7.
