@@ -13,6 +13,8 @@ from .primitives import (
     rq,
     softmax_div,
 )
+from .model import Result, forward
+from .trace import TraceWriter, trace_digest
 
 __all__ = [
     "rq",
@@ -26,4 +28,8 @@ __all__ = [
     "gate_key",
     "norm",
     "pad",
+    "Result",
+    "forward",
+    "TraceWriter",
+    "trace_digest",
 ]
