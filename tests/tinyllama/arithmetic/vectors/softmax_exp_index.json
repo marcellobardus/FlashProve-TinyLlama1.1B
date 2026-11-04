@@ -1,0 +1,39 @@
+{
+  "primitive": "u = floor((m - s) / 2^sh) and e = EX[u] if u < 2307 else 0 (ARITHMETIC_CONTRACT.md 9.1 step 4)",
+  "fake_table": "the lookup cases are against a fake EX list of 2307 entries, EX[u] = 4096 - u; the real EX is frozen offline and is not needed to test the indexing rule",
+  "u_cases": [
+    {"m": 100, "s": 100, "sh": 4, "expected_u": 0, "note": "s = m gives u = 0, EX[0] = 4096 in the real table"},
+    {"m": 200, "s": 100, "sh": 4, "expected_u": 6, "note": "floor(100 / 16)"},
+    {"m": 4096, "s": 0, "sh": 8, "expected_u": 16},
+    {"m": 1099511627776, "s": 0, "sh": 12, "expected_u": 268435456, "note": "2^40 with sh = 12, far past the table"},
+    {"m": 2147483648, "s": 0, "sh": 4, "expected_u": 134217728},
+    {"m": 590336, "s": 0, "sh": 8, "expected_u": 2306, "note": "2306 * 256: the last index inside the table"},
+    {"m": 590591, "s": 0, "sh": 8, "expected_u": 2306, "note": "2307 * 256 - 1: still inside"},
+    {"m": 590592, "s": 0, "sh": 8, "expected_u": 2307, "note": "2307 * 256: the first u that reads 0 instead of the table"},
+    {"m": 36896, "s": 0, "sh": 4, "expected_u": 2306, "note": "sh = 4 boundary inside"},
+    {"m": 36912, "s": 0, "sh": 4, "expected_u": 2307, "note": "sh = 4 boundary outside"},
+    {"m": 9445376, "s": 0, "sh": 12, "expected_u": 2306, "note": "sh = 12 boundary inside: 2306 * 4096"},
+    {"m": 9449472, "s": 0, "sh": 12, "expected_u": 2307, "note": "sh = 12 boundary outside: 2307 * 4096"},
+    {"m": 0, "s": -2147483648, "sh": 8, "expected_u": 8388608, "note": "s far below m still gives a non-negative u"}
+  ],
+  "lookup_cases": [
+    {"u": 0, "expected_e": 4096, "note": "fake EX[0] = 4096"},
+    {"u": 1, "expected_e": 4095},
+    {"u": 2, "expected_e": 4094},
+    {"u": 100, "expected_e": 3996},
+    {"u": 2306, "expected_e": 1790, "note": "the last index of the table"},
+    {"u": 2307, "expected_e": 0, "note": "first u past the table: 0, never an IndexError"},
+    {"u": 2308, "expected_e": 0},
+    {"u": 1000000, "expected_e": 0},
+    {"u": 2147483648, "expected_e": 0, "note": "2^31 from the u_cases above"}
+  ],
+  "e_cases": [
+    {"m": 100, "s": 100, "sh": 4, "expected_e": 4096, "note": "u = 0 inside the table"},
+    {"m": 200, "s": 100, "sh": 4, "expected_e": 4090, "note": "u = 6, fake EX[6] = 4090"},
+    {"m": 590336, "s": 0, "sh": 8, "expected_e": 1790, "note": "u = 2306, fake EX[2306] = 1790"},
+    {"m": 590592, "s": 0, "sh": 8, "expected_e": 0, "note": "u = 2307 past the table"},
+    {"m": 1099511627776, "s": 0, "sh": 12, "expected_e": 0, "note": "u = 2^28 past the table"},
+    {"m": 9445376, "s": 0, "sh": 12, "expected_e": 1790},
+    {"m": 9449472, "s": 0, "sh": 12, "expected_e": 0}
+  ]
+}
