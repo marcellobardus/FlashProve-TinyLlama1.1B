@@ -30,6 +30,12 @@ Branch `feature/tinyllama-integer-audit` from main `9e2bdd8f`. Not pushed.
 - Commands: `python3 work/scratch/tables_probe.py` (FlashProve tables.py functions with torch stubbed): rotary 32,768 entries each in -4096 .. 4096; EX u0 = 2307; Ts 65,536 entries in -18 .. 4095; texp and tsilu digests equal stored FlashProve policy files (prover/tests/configurations/pinned_no_proof_of_work_roomy, integrations/vllm/integer_model/tests/configurations/tiny_without_clamps). Bounds and rounding examples computed with Python integers (outputs in the contract).
 - Not run: no model load, no conversion, no tests (none exist yet).
 
+## 2026-11-04 shared interfaces (done, draft 1.0.0)
+
+- Wrote docs/tinyllama/INTERFACES.md (I1 versioning, I2 artifact files and refusal codes A01 to A16, I3 trace records and size rule, I4 prompt set TL-PROMPTS-1 and calibration set TL-CAL-1, worker boundaries) and docs/tinyllama/prompts_v1.json.
+- Commands: `work/scratch/venv/bin/python work/scratch/prompt_probe.py work/scratch/prompts_draft.json` and `prompt_write.py`: P0 24 ids (sha256 cf21aeeb...), P1 37, P2 57, P3 25; rendered text ends with `<|assistant|>\n`; chat template sha256 66291cf0... and tokenizer.json sha256 bcd04f0e... equal the manifest.
+- Updated work/TASKS.md: file ownership without overlap, new tasks T1.5, T3.4, T3.5, pod checks P1 to P5.
+
 ## Blockers
 
 - Proof: verifier standard form requires NE > 0 (`routed-experts`); dense TinyLlama cannot reach `YES` without an agreed change. D1 resolved as option a: proof compatibility deferred (O1).
