@@ -29,14 +29,11 @@ import shutil
 import struct
 import tempfile
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
 
 from tinyllama import contract
-from tinyllama.convert import tables as table_recipes
-from tinyllama.manifest import sha256_file
 
 
 @dataclass(frozen=True)
@@ -497,52 +494,178 @@ def _kl_word_problems(kl, dims, params=None):
     return problems
 
 
-@lru_cache(maxsize=None)
-def _recipe_tuples(dims):
-    cosines, sines = table_recipes.rope_tables(
-        dims.T, dims.DH, contract.CS, contract.THETA0
+_MASK64 = 2**64 - 1
+_TABLE_DIGEST_NUMBER = 72
+_TABLE_DIGEST_WORDS = 8
+_TABLE_DIGEST_BLOCK_WORDS = 32
+
+_IV = (
+    0x6A09E667F3BCC908,
+    0xBB67AE8584CAA73B,
+    0x3C6EF372FE94F82B,
+    0xA54FF53A5F1D36F1,
+    0x510E527FADE682D1,
+    0x9B05688C2B3E6C1F,
+    0x1F83D9ABFB41BD6B,
+    0x5BE0CD19137E2179,
+)
+
+_BLAKE2B_SIGMA = (
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
+    (14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3),
+    (11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4),
+    (7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8),
+    (9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13),
+    (2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9),
+    (12, 5, 1, 15, 14, 13, 4, 10, 0, 7, 6, 3, 9, 2, 8, 11),
+    (13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10),
+    (6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5),
+    (10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0),
+    (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
+    (14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3),
+)
+
+
+def _rotr64(word, count):
+    return ((word >> count) | (word << (64 - count))) & _MASK64
+
+
+def _blake2b_init_param(outlen, keylen):
+    param = bytes([outlen, keylen, 1, 1]) + bytes(60)
+    return [
+        _IV[index] ^ int.from_bytes(param[8 * index : 8 * index + 8], "little")
+        for index in range(8)
+    ]
+
+
+def _digest_g(round_index, index, a, b, c, d, message):
+    a = (
+        a
+        + b
+        + message[_BLAKE2B_SIGMA[round_index][2 * index + 0]]
+    ) & _MASK64
+    d = _rotr64(d ^ a, 32)
+    c = (c + d) & _MASK64
+    b = _rotr64(b ^ c, 24)
+    a = (
+        a
+        + b
+        + message[_BLAKE2B_SIGMA[round_index][2 * index + 1]]
+    ) & _MASK64
+    d = _rotr64(d ^ a, 16)
+    c = (c + d) & _MASK64
+    b = _rotr64(b ^ c, 63)
+    return a, b, c, d
+
+
+def _digest_round(round_index, state, message):
+    state[0], state[4], state[8], state[12] = _digest_g(
+        round_index, 0, state[0], state[4], state[8], state[12], message
     )
-    exp = table_recipes.softmax_table(contract.EXP_S, contract.RX)
-    silu = table_recipes.silu_table(contract.EG, contract.SMAX)
-    return tuple(cosines), tuple(sines), tuple(exp), tuple(silu)
+    state[1], state[5], state[9], state[13] = _digest_g(
+        round_index, 1, state[1], state[5], state[9], state[13], message
+    )
+    state[2], state[6], state[10], state[14] = _digest_g(
+        round_index, 2, state[2], state[6], state[10], state[14], message
+    )
+    state[3], state[7], state[11], state[15] = _digest_g(
+        round_index, 3, state[3], state[7], state[11], state[15], message
+    )
+    state[0], state[5], state[10], state[15] = _digest_g(
+        round_index, 4, state[0], state[5], state[10], state[15], message
+    )
+    state[1], state[6], state[11], state[12] = _digest_g(
+        round_index, 5, state[1], state[6], state[11], state[12], message
+    )
+    state[2], state[7], state[8], state[13] = _digest_g(
+        round_index, 6, state[2], state[7], state[8], state[13], message
+    )
+    state[3], state[4], state[9], state[14] = _digest_g(
+        round_index, 7, state[3], state[4], state[9], state[14], message
+    )
 
 
-def _recipe_tables(dims):
-    cosines, sines, exp, silu = _recipe_tuples(dims)
-    return {
-        "rope_c": np.asarray(cosines, dtype=np.int32).reshape(
-            dims.T, dims.DH // 2
-        ),
-        "rope_s": np.asarray(sines, dtype=np.int32).reshape(
-            dims.T, dims.DH // 2
-        ),
-        "softmax_ex": np.asarray(exp, dtype=np.int32),
-        "silu_ts": np.asarray(silu, dtype=np.int32),
-    }
+def _digest_compress(state, message, count_low, count_high, last):
+    work = [0] * 16
+    for index in range(8):
+        work[index] = state[index]
+    work[8] = _IV[0]
+    work[9] = _IV[1]
+    work[10] = _IV[2]
+    work[11] = _IV[3]
+    work[12] = _IV[4] ^ count_low
+    work[13] = _IV[5] ^ count_high
+    work[14] = _IV[6] ^ (_MASK64 if last else 0)
+    work[15] = _IV[7]
+    for round_index in range(12):
+        _digest_round(round_index, work, message)
+    return [
+        state[index] ^ work[index] ^ work[index + 8] for index in range(8)
+    ]
 
 
-@lru_cache(maxsize=None)
-def _recipe_digest_tuples(dims):
-    cosines, sines, exp, silu = _recipe_tuples(dims)
-    return {
-        "trope": tuple(
-            table_recipes.table_digest(
-                table_recipes.trope_words(cosines, sines)
-            )
-        ),
-        "texp": tuple(
-            table_recipes.table_digest(table_recipes.texp_words(exp))
-        ),
-        "tsilu": tuple(
-            table_recipes.table_digest(table_recipes.tsilu_words(silu))
-        ),
-    }
+def _table_digest(words):
+    """The FlashProve table digest, eight 32-bit words.
+
+    This is the integer digest algorithm only.  The float table recipes stay
+    in the converter and in the tests; the loader never imports them.
+    """
+    count = len(words)
+    if (
+        not 0 <= _TABLE_DIGEST_NUMBER < 2**32
+        or count >= 2**32
+        or not all(0 <= word < 2**32 for word in words)
+    ):
+        raise ValueError("table digest words are outside 0 .. 2^32 - 1")
+    blocks = max(1, -(-count // _TABLE_DIGEST_BLOCK_WORDS))
+    count_high = _TABLE_DIGEST_NUMBER + (count << 32)
+    state = _blake2b_init_param(64, 0)
+    for block_index in range(blocks):
+        start = _TABLE_DIGEST_BLOCK_WORDS * block_index
+        block = words[start : start + _TABLE_DIGEST_BLOCK_WORDS]
+        message = struct.unpack(
+            "<16Q",
+            struct.pack("<%dI" % len(block), *block).ljust(
+                4 * _TABLE_DIGEST_BLOCK_WORDS, b"\0"
+            ),
+        )
+        last = block_index == blocks - 1
+        state = _digest_compress(
+            state,
+            message,
+            4 * count
+            if last
+            else 4 * _TABLE_DIGEST_BLOCK_WORDS * (block_index + 1),
+            count_high,
+            last,
+        )
+    digest = struct.pack("<8Q", *state)[: 4 * _TABLE_DIGEST_WORDS]
+    return list(struct.unpack("<%dI" % _TABLE_DIGEST_WORDS, digest))
 
 
-def _recipe_digests(dims):
-    return {
-        name: list(words) for name, words in _recipe_digest_tuples(dims).items()
-    }
+def _table_words(name, values):
+    flat = np.asarray(values).reshape(-1).tolist()
+    if name == "softmax_ex":
+        return flat
+    return [value + 4096 for value in flat]
+
+
+def _table_digests(tables):
+    result = {}
+    if "rope_c" in tables and "rope_s" in tables:
+        result["trope"] = _table_digest(
+            _table_words("rope_c", tables["rope_c"])
+            + _table_words("rope_s", tables["rope_s"])
+        )
+    if "softmax_ex" in tables:
+        result["texp"] = _table_digest(
+            _table_words("softmax_ex", tables["softmax_ex"])
+        )
+    if "silu_ts" in tables:
+        result["tsilu"] = _table_digest(
+            _table_words("silu_ts", tables["silu_ts"])
+        )
+    return result
 
 
 def _table_sha(mapping, name, path):
@@ -557,43 +680,38 @@ def _array_bytes(array, dtype):
 
 
 def _table_failures(tables, dims, params=None, table_sha=None):
-    """A16 details for the tables in memory, and optionally params."""
+    """A08 shape and A16 digest details for the caller-supplied tables."""
     problems = []
-    recipe = _recipe_tables(dims)
+    expected_files = _expected_files(dims)
     for name, path in TABLE_PATHS.items():
         if name not in tables:
             problems.append(("A08", path, "missing table %s" % name))
             continue
         array = np.asarray(tables[name])
         if array.dtype.kind not in "iu":
-            problems.append(("A08", path, "table dtype is %s, expected integers" % array.dtype))
+            problems.append(
+                ("A08", path, "table dtype is %s, expected integers" % array.dtype)
+            )
             continue
-        expected = recipe[name]
-        if array.shape != expected.shape:
+        expected_shape = expected_files[path][1]
+        if tuple(array.shape) != tuple(expected_shape):
             problems.append(
                 (
                     "A08",
                     path,
                     "table shape is {}, expected {}".format(
-                        array.shape, expected.shape
+                        array.shape, tuple(expected_shape)
                     ),
                 )
             )
             continue
-        array = array.astype(np.int64)
-        if not np.array_equal(array, expected):
-            mismatch = np.argwhere(array != expected)
-            first = tuple(int(x) for x in mismatch[0]) if len(mismatch) else ()
-            problems.append(
-                ("A16", path, "table entry differs from its recipe at %r" % (first,))
-            )
 
     if isinstance(params, dict):
         digests = params.get("digests")
-        expected_digests = _recipe_digests(dims)
+        actual_digests = _table_digests(tables)
         if isinstance(digests, dict):
             for name in ("trope", "texp", "tsilu"):
-                if digests.get(name) != expected_digests[name]:
+                if name in actual_digests and digests.get(name) != actual_digests[name]:
                     problems.append(
                         ("A16", "params.json", "digest %s differs" % name)
                     )
@@ -732,15 +850,51 @@ def _sort_failures(failures):
     )
 
 
+_CHUNK_BYTES = 1 << 20
+
+
 def _read(raw_path):
     with open(raw_path, "rb") as handle:
         return handle.read()
 
 
-def _content_failure(
-    path, dtype, shape, raw, dims, expected, params
-):
-    """Return A09..A15 failures for one file's bytes."""
+def _scan_file(raw_path, dtype=None, keep=False):
+    """Read a file once, hashing it and tracking its value range per chunk.
+
+    The dtype is a numpy little-endian dtype.  The returned low and high are
+    the minimum and maximum over all chunks, or None for a file with no
+    entries.  Raw bytes are kept only when requested or when dtype is None,
+    so large data files are never copied into memory.
+    """
+    digest = hashlib.sha256()
+    kept = bytearray() if keep or dtype is None else None
+    low = None
+    high = None
+    with open(raw_path, "rb") as handle:
+        while True:
+            block = handle.read(_CHUNK_BYTES)
+            if not block:
+                break
+            digest.update(block)
+            if kept is not None:
+                kept.extend(block)
+            if dtype is not None:
+                values = np.frombuffer(block, dtype=dtype)
+                if values.size:
+                    block_low = int(values.min())
+                    block_high = int(values.max())
+                    low = block_low if low is None else min(low, block_low)
+                    high = block_high if high is None else max(high, block_high)
+    return (
+        digest.hexdigest(),
+        bytes(kept) if kept is not None else None,
+        low,
+        high,
+    )
+
+
+def _raw_content_failures(path, raw, dims, params):
+    """Return A08/A11 to A14 failures that need a file's full bytes."""
     failures = []
 
     if path == "KL.bin":
@@ -748,35 +902,6 @@ def _content_failure(
             return failures
         array = np.frombuffer(raw, dtype="<u4").reshape(dims.L, 13)
         failures.extend(_kl_word_problems(array, dims, params))
-        return failures
-
-    if path == "emb.i32":
-        array = np.frombuffer(raw, dtype="<i4")
-        wide = array.astype(np.int64)
-        if wide.size and int(np.abs(wide).max()) >= contract.EMB_BOUND:
-            failures.append(
-                (
-                    "A09",
-                    path,
-                    "embedding entry has absolute value at least 2^21",
-                )
-            )
-        return failures
-
-    if dtype == "i16" and path in expected:
-        array = np.frombuffer(raw, dtype="<i2")
-        if array.size and (
-            int(array.min()) < -contract.WEIGHT_BOUND
-            or int(array.max()) > contract.WEIGHT_BOUND
-        ):
-            failures.append(
-                (
-                    "A09",
-                    path,
-                    "matrix entry outside -%d .. %d"
-                    % (contract.WEIGHT_BOUND, contract.WEIGHT_BOUND),
-                )
-            )
         return failures
 
     if path == "exponents.json":
@@ -809,8 +934,8 @@ def _directory_name_failure(directory, manifest_raw):
     return None
 
 
-def validate_artifact(directory, *, dims=FULL):
-    """Return every I2.4 failure as a list of (code, path, detail) tuples."""
+def _validate(directory, dims):
+    """Return (failures, directory_failure, manifest_raw, manifest)."""
     directory = Path(directory)
     manifest_path = directory / "manifest.json"
 
@@ -819,13 +944,23 @@ def validate_artifact(directory, *, dims=FULL):
             raise OSError("manifest.json is missing or not a regular file")
         manifest_raw = _read(manifest_path)
     except OSError as exc:
-        return [("A01", "manifest.json", "cannot read manifest: {}".format(exc))]
+        return (
+            [("A01", "manifest.json", "cannot read manifest: {}".format(exc))],
+            None,
+            None,
+            None,
+        )
     try:
         manifest = _parse_canonical_json(manifest_raw)
         if not isinstance(manifest, dict):
             raise _JSONProblem("manifest is not a JSON object")
     except _JSONProblem as exc:
-        return [("A01", "manifest.json", str(exc))]
+        return (
+            [("A01", "manifest.json", str(exc))],
+            None,
+            manifest_raw,
+            None,
+        )
 
     expected = _expected_files(dims)
     failures = []
@@ -855,6 +990,8 @@ def validate_artifact(directory, *, dims=FULL):
     seen_paths = set()
     order_paths = []
     order_complete = True
+    table_raw = {}
+    table_sha_actual = {}
 
     for entry in entries:
         if not isinstance(entry, dict):
@@ -986,8 +1123,13 @@ def validate_artifact(directory, *, dims=FULL):
             failures.append(("A07", path, "sha256 differs"))
             content_skipped.add(path)
             continue
+
+        scan_dtype = NUMPY_DTYPE.get(dtype)
+        keep_raw = dtype == "json" or path == "KL.bin" or path in TABLE_PATHS.values()
         try:
-            actual_sha = sha256_file(candidate)
+            actual_sha, raw, low, high = _scan_file(
+                candidate, scan_dtype, keep=keep_raw
+            )
         except OSError as exc:
             failures.append(("A06", path, "cannot read file: %s" % exc))
             content_skipped.add(path)
@@ -997,12 +1139,35 @@ def validate_artifact(directory, *, dims=FULL):
             content_skipped.add(path)
             continue
 
-        try:
-            raw = _read(candidate)
-        except OSError as exc:
-            failures.append(("A06", path, "cannot read file: %s" % exc))
-            content_skipped.add(path)
+        if path == "emb.i32":
+            if low is not None and (
+                low < -(contract.EMB_BOUND - 1)
+                or high > contract.EMB_BOUND - 1
+            ):
+                failures.append(
+                    (
+                        "A09",
+                        path,
+                        "embedding entry has absolute value at least 2^21",
+                    )
+                )
             continue
+
+        if dtype == "i16":
+            if low is not None and (
+                low < -contract.WEIGHT_BOUND
+                or high > contract.WEIGHT_BOUND
+            ):
+                failures.append(
+                    (
+                        "A09",
+                        path,
+                        "matrix entry outside -%d .. %d"
+                        % (contract.WEIGHT_BOUND, contract.WEIGHT_BOUND),
+                    )
+                )
+            continue
+
         if path == "params.json":
             try:
                 params = _parse_canonical_json(raw)
@@ -1011,52 +1176,16 @@ def validate_artifact(directory, *, dims=FULL):
                 continue
             for detail in _params_problems(params, dims):
                 failures.append(("A15", path, detail))
-
-        failures.extend(
-            _content_failure(
-                path, dtype, shape, raw, dims, expected, params
-            )
-        )
-
-    # A16 table entries, recomputed from the recipe.  A file that failed
-    # A04/A06/A07 is skipped, as for every other content check.
-    recipe_arrays = _recipe_tables(dims)
-    for name, path in TABLE_PATHS.items():
-        if path not in listed or path in content_skipped:
             continue
-        table_path = directory / path
-        if not table_path.is_file():
-            continue
-        try:
-            raw = _read(table_path)
-        except OSError as exc:
-            failures.append(("A06", path, "cannot read table: %s" % exc))
-            continue
-        recipe = recipe_arrays[name]
-        actual = np.frombuffer(raw, dtype="<i4")
-        if actual.size != recipe.size:
-            failures.append(
-                (
-                    "A16",
-                    path,
-                    "table has %d entries, recipe has %d"
-                    % (actual.size, recipe.size),
-                )
-            )
-        else:
-            actual = actual.reshape(recipe.shape)
-            if not np.array_equal(actual, recipe):
-                mismatch = np.argwhere(actual != recipe)
-                first = tuple(int(x) for x in mismatch[0]) if len(mismatch) else ()
-                failures.append(
-                    (
-                        "A16",
-                        path,
-                        "table entry differs from its recipe at %r" % (first,),
-                    )
-                )
 
-    # A16 checks that do not need the table files to be readable.
+        if path in TABLE_PATHS.values():
+            table_raw[path] = raw
+            table_sha_actual[path] = actual_sha
+            continue
+
+        failures.extend(_raw_content_failures(path, raw, dims, params))
+
+    # A16 uses only the table file digests and the params.json summary.
     if isinstance(params, dict):
         for detail in _params_problems(params, dims):
             if not any(
@@ -1072,11 +1201,19 @@ def validate_artifact(directory, *, dims=FULL):
         ):
             failures.append(("A12", "params.json", "MF/KF: %s" % mf_kf))
 
-        expected_digests = _recipe_digests(dims)
+        file_tables = {
+            name: np.frombuffer(table_raw[path], dtype="<i4")
+            for name, path in TABLE_PATHS.items()
+            if path in table_raw
+        }
+        actual_digests = _table_digests(file_tables)
         digests = params.get("digests")
         if isinstance(digests, dict):
             for name in ("trope", "texp", "tsilu"):
-                if digests.get(name) != expected_digests[name]:
+                if (
+                    name in actual_digests
+                    and digests.get(name) != actual_digests[name]
+                ):
                     failures.append(
                         ("A16", "params.json", "digest %s differs" % name)
                     )
@@ -1094,25 +1231,16 @@ def validate_artifact(directory, *, dims=FULL):
                         )
                     )
                 elif (
-                    path in listed
-                    and path not in content_skipped
-                    and (directory / path).is_file()
+                    path in table_sha_actual
+                    and expected_sha != table_sha_actual[path]
                 ):
-                    try:
-                        actual = sha256_file(directory / path)
-                    except OSError as exc:
-                        failures.append(
-                            ("A06", path, "cannot read table: %s" % exc)
+                    failures.append(
+                        (
+                            "A16",
+                            "params.json",
+                            "tables_sha256 for %s differs" % name,
                         )
-                        continue
-                    if expected_sha != actual:
-                        failures.append(
-                            (
-                                "A16",
-                                "params.json",
-                                "tables_sha256 for %s differs" % name,
-                            )
-                        )
+                    )
 
     # A05 and symlinks anywhere under the directory.
     for root, dirs, files in os.walk(str(directory), followlinks=False):
@@ -1145,13 +1273,21 @@ def validate_artifact(directory, *, dims=FULL):
                 ("A04", path, "expected file is not listed in the manifest")
             )
 
-    # I2.2/D13 (5): the directory name is the artifact id.
+    # I2.2/D13 (5): the directory name is the artifact id.  It is kept apart
+    # from the other failures so load_artifact can apply D20 without rereading
+    # manifest.json.
     directory_failure = _directory_name_failure(directory, manifest_raw)
+
+    return failures, directory_failure, manifest_raw, manifest
+
+
+def validate_artifact(directory, *, dims=FULL):
+    """Return every I2.4 failure as a list of (code, path, detail) tuples."""
+    failures, directory_failure, _, _ = _validate(directory, dims)
     if directory_failure is not None:
+        failures = list(failures)
         failures.append(directory_failure)
-
     return _sort_failures(failures)
-
 
 def write_artifact(
     out_dir,
@@ -1193,28 +1329,30 @@ def write_artifact(
         raise ArtifactRejected(code, path, detail)
 
     expected = _expected_files(dims)
-    data = {}
-    for path, (dtype, _) in expected.items():
-        if dtype == "i16":
-            data[path] = _array_bytes(matrices[path], "<i2")
-    data["KL.bin"] = _array_bytes(kl_words, "<u4")
-    data["emb.i32"] = _array_bytes(emb, "<i4")
-    for name, path in TABLE_PATHS.items():
-        data[path] = _array_bytes(tables[name], "<i4")
-    data["params.json"] = _canonical_json_bytes(params)
-    data["exponents.json"] = _canonical_json_bytes(exponents)
+    table_names = {path: name for name, path in TABLE_PATHS.items()}
 
     temporary = Path(
         tempfile.mkdtemp(dir=str(out_dir), prefix=".artifact-building-")
     )
     try:
         files = []
-        for path in sorted(data):
-            raw = data[path]
+        for path in sorted(expected):
+            dtype, shape = expected[path]
+            if dtype == "i16":
+                raw = _array_bytes(matrices[path], "<i2")
+            elif path == "KL.bin":
+                raw = _array_bytes(kl_words, "<u4")
+            elif path == "emb.i32":
+                raw = _array_bytes(emb, "<i4")
+            elif path in table_names:
+                raw = _array_bytes(tables[table_names[path]], "<i4")
+            elif path == "params.json":
+                raw = _canonical_json_bytes(params)
+            else:
+                raw = _canonical_json_bytes(exponents)
             destination = temporary / path
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_bytes(raw)
-            dtype, shape = expected[path]
             files.append(
                 {
                     "path": path,
@@ -1224,6 +1362,7 @@ def write_artifact(
                     "sha256": hashlib.sha256(raw).hexdigest(),
                 }
             )
+            del raw
 
         manifest = {
             "format": "tl-int-artifact",
@@ -1277,38 +1416,42 @@ class Artifact:
 
 def load_artifact(directory, expected_id=None, *, dims=FULL):
     """Validate and load an artifact, with read only memory mapped arrays."""
-    failures = validate_artifact(directory, dims=dims)
-    if failures:
-        # The directory-name rule reports A07 on manifest.json, so sorting
-        # would make it mask a content fault that used to be raised first.
-        # Keep the old code for an artifact that already has another failure.
-        directory_failure = None
-        try:
-            manifest_raw = _read(Path(directory) / "manifest.json")
-            directory_failure = _directory_name_failure(directory, manifest_raw)
-        except OSError:
-            pass
-        other_failures = [
-            failure for failure in failures if failure != directory_failure
-        ]
-        code, path, detail = _sort_failures(other_failures or failures)[0]
-        raise ArtifactRejected(code, path, detail)
-
     directory = Path(directory)
-    manifest_raw = _read(directory / "manifest.json")
-    artifact_id = hashlib.sha256(manifest_raw).hexdigest()
+    failures, directory_failure, manifest_raw, manifest = _validate(
+        directory, dims
+    )
 
-    # QUESTION: I2.4 has no code for a caller supplied expected_id mismatch.
-    if expected_id is not None and expected_id != artifact_id:
-        raise ArtifactRejected(
-            "A07",
-            "manifest.json",
-            "expected id {} but the manifest hashes to {}".format(
-                expected_id, artifact_id
-            ),
+    artifact_id = (
+        hashlib.sha256(manifest_raw).hexdigest()
+        if manifest_raw is not None
+        else None
+    )
+    if (
+        artifact_id is not None
+        and expected_id is not None
+        and expected_id != artifact_id
+    ):
+        failures = list(failures)
+        failures.append(
+            (
+                "A07",
+                "manifest.json",
+                "expected id {} but the manifest hashes to {}".format(
+                    expected_id, artifact_id
+                ),
+            )
         )
 
-    manifest = _parse_canonical_json(manifest_raw)
+    if failures:
+        # D20: the directory-name A07 stays out while another failure exists,
+        # so the first sorted failure is the same one validate_artifact and
+        # the previous loader reported.
+        code, path, detail = _sort_failures(failures)[0]
+        raise ArtifactRejected(code, path, detail)
+    if directory_failure is not None:
+        code, path, detail = directory_failure
+        raise ArtifactRejected(code, path, detail)
+
     expected = _expected_files(dims)
     params = _parse_canonical_json(_read(directory / "params.json"))
     exponents = _parse_canonical_json(_read(directory / "exponents.json"))

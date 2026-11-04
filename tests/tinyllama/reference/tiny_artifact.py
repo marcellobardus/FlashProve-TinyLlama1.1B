@@ -11,14 +11,39 @@ from pathlib import Path
 import numpy as np
 
 from tinyllama import contract
-from tinyllama.artifacts import (
-    FULL,
-    TABLE_PATHS,
-    Dims,
-    _recipe_digests,
-    _recipe_tables,
-    write_artifact,
-)
+from tinyllama.artifacts import FULL, TABLE_PATHS, Dims, write_artifact
+from tinyllama.convert import tables
+
+
+def _recipe_tables(dims):
+    cosines, sines = tables.rope_tables(
+        dims.T, dims.DH, contract.CS, contract.THETA0
+    )
+    exp = tables.softmax_table(contract.EXP_S, contract.RX)
+    silu = tables.silu_table(contract.EG, contract.SMAX)
+    return {
+        "rope_c": np.asarray(cosines, dtype=np.int32).reshape(
+            dims.T, dims.DH // 2
+        ),
+        "rope_s": np.asarray(sines, dtype=np.int32).reshape(
+            dims.T, dims.DH // 2
+        ),
+        "softmax_ex": np.asarray(exp, dtype=np.int32),
+        "silu_ts": np.asarray(silu, dtype=np.int32),
+    }
+
+
+def _recipe_digests(dims):
+    cosines, sines = tables.rope_tables(
+        dims.T, dims.DH, contract.CS, contract.THETA0
+    )
+    exp = tables.softmax_table(contract.EXP_S, contract.RX)
+    silu = tables.silu_table(contract.EG, contract.SMAX)
+    return {
+        "trope": tables.table_digest(tables.trope_words(cosines, sines)),
+        "texp": tables.table_digest(tables.texp_words(exp)),
+        "tsilu": tables.table_digest(tables.tsilu_words(silu)),
+    }
 
 DEFAULT_DIMS = Dims(L=2, D=8, H=2, G=1, DH=4, F=6, V=32, T=8)
 RUN_DIMS = Dims(L=1, D=8, H=2, G=1, DH=4, F=6, V=32000, T=32)
@@ -31,10 +56,10 @@ MATRIX_NAMES = ("wq", "wk", "wv", "wo", "wg", "wu", "wd")
 
 def _table_sha256(tables):
     return {
-        name: hashlib.sha256(
+        path: hashlib.sha256(
             np.ascontiguousarray(tables[name], dtype="<i4").tobytes(order="C")
         ).hexdigest()
-        for name in TABLE_PATHS
+        for name, path in TABLE_PATHS.items()
     }
 
 
