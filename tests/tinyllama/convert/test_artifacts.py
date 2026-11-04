@@ -518,6 +518,8 @@ def test_a09_embedding_out_of_range(artifact, tmp_path):
 
 # A10 to A14 ----------------------------------------------------------------
 
+SHIFT_WORDS = ("kq", "kk", "kv", "ko", "kg", "ku", "kd")
+
 
 def test_a10_kl_extra_word(artifact, tmp_path):
     path = _copy(artifact, tmp_path)
@@ -544,6 +546,39 @@ def test_a11_bad_shift(artifact, tmp_path, mutation):
     mutation[1](words)
     _rewrite_kl(path, words)
     _assert_code(path, "A11")
+
+
+@pytest.mark.parametrize("shift", SHIFT_WORDS)
+@pytest.mark.parametrize("value", [0, 33])
+def test_a11_shift_outside_ceiling_per_shift(artifact, tmp_path, shift, value):
+    path = _copy(artifact, tmp_path)
+    words = np.asarray(artifact["data"]["kl_words"]).copy()
+    index = SHIFT_WORDS.index(shift)
+    words[0, index] = value
+    if shift in ("kq", "kk"):
+        words[0, 0:2] = value
+    _rewrite_kl(path, words)
+    _assert_code(path, "A11")
+    failures = validate_artifact(path, dims=DIMS)
+    assert (
+        "A11",
+        "KL.bin",
+        "layer 0 %s is %d, outside 1 .. 32" % (shift, value),
+    ) in failures
+
+
+@pytest.mark.parametrize("shift", SHIFT_WORDS)
+@pytest.mark.parametrize("value", [1, 32])
+def test_a11_shift_at_limit_accepted_per_shift(artifact, tmp_path, shift, value):
+    path = _copy(artifact, tmp_path)
+    words = np.asarray(artifact["data"]["kl_words"]).copy()
+    index = SHIFT_WORDS.index(shift)
+    words[0, index] = value
+    if shift in ("kq", "kk"):
+        words[0, 0:2] = value
+    _rewrite_kl(path, words)
+    failures = validate_artifact(path, dims=DIMS)
+    assert not [failure for failure in failures if failure[0] == "A11"], failures
 
 
 @pytest.mark.parametrize(

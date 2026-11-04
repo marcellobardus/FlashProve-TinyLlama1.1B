@@ -93,6 +93,19 @@ TABLE_PATHS = {
 }
 MATRIX_NAMES = ("wq", "wk", "wv", "wo", "wg", "wu", "wd")
 
+# Contract 5.2 / D16: for TL-INT-1 every shift has digit form 2, whose
+# ceiling is 32.  A proof profile that fixes forms must supply its own
+# per-class ceilings.
+SHIFT_CEILINGS = {
+    "kq": 32,
+    "kk": 32,
+    "kv": 32,
+    "ko": 32,
+    "kg": 32,
+    "ku": 32,
+    "kd": 32,
+}
+
 
 class ArtifactRejected(ValueError):
     """An artifact violates one of the I2.4 rules."""
@@ -430,15 +443,15 @@ def _kl_word_problems(kl, dims, params=None):
 
     for layer in range(dims.L):
         row = words[layer]
-        for index, name in enumerate(("kq", "kk", "kv", "ko", "kg", "ku", "kd")):
+        for index, (name, ceiling) in enumerate(SHIFT_CEILINGS.items()):
             value = int(row[index])
-            if value < 1 or value > 32:
+            if value < 1 or value > ceiling:
                 problems.append(
                     (
                         "A11",
                         "KL.bin",
-                        "layer %d %s is %d, outside 1 .. 32"
-                        % (layer, name, value),
+                        "layer %d %s is %d, outside 1 .. %d"
+                        % (layer, name, value, ceiling),
                     )
                 )
         kq, kk = int(row[0]), int(row[1])
