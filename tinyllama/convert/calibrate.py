@@ -239,13 +239,14 @@ def _attention(q, k, v, heads, groups, dh):
     """Causal grouped query attention for one window, all in float32."""
     positions = q.shape[0]
     group = heads // groups
+    scale = np.float32(1.0 / math.sqrt(float(dh)))
     out = np.empty((positions, heads, dh), dtype=np.float32)
     for head in range(heads):
         key_head = head // group
         query = q[:, head, :]
         key = k[:, key_head, :]
         value = v[:, key_head, :]
-        scores = np.matmul(query, key.T)
+        scores = np.matmul(query, key.T) * scale
         head_out = np.empty((positions, dh), dtype=np.float32)
         for position in range(positions):
             row = scores[position, : position + 1]

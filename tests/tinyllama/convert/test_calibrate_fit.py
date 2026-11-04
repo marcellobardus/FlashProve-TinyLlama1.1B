@@ -248,12 +248,13 @@ def _independent_rotate_half(x, cosines, sines):
 def _independent_attention(q, k, v, heads, groups):
     positions, _, dh = q.shape
     group = heads // groups
+    scale = np.float32(1.0 / math.sqrt(float(dh)))
     out = np.empty((positions, heads, dh), dtype=np.float32)
     for head in range(heads):
         query = q[:, head, :]
         key = k[:, head // group, :]
         value = v[:, head // group, :]
-        scores = np.matmul(query, key.T)
+        scores = np.matmul(query, key.T) * scale
         for position in range(positions):
             row = scores[position, : position + 1]
             weights = np.exp(row - np.max(row)).astype(np.float32)
