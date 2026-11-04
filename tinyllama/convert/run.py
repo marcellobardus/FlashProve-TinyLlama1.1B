@@ -4,7 +4,11 @@
 #       --checkpoint /workspace/ckpt --out /workspace/repo/artifacts/TL-INT-1 \
 #       --calib /workspace/calib/fit.npy --calib-sha256 <FIT_SHA256> \
 #       --heldout /workspace/calib/heldout.npy --heldout-sha256 <HELDOUT_SHA256> \
+#       --workers 8 \
 #       --report /workspace/repo/artifacts/TL-INT-1/range-report.json
+#
+# Add --skip-range-report to build and validate the artifact only.  It prints
+# the exact tinyllama.convert.range_report command to run next on stderr.
 #
 # Add --test-dims '{"L":2,"D":64,"H":4,"G":2,"DH":16,"F":128,"V":256,"T":32}'
 # and --manifest PATH only for the synthetic tests of this repository.
@@ -43,6 +47,7 @@ import hashlib
 import json
 import os
 import platform
+import shlex
 import sys
 from pathlib import Path
 
@@ -148,6 +153,32 @@ def _provenance_command(argv):
             continue
         kept.append(argument)
     return "python -m tinyllama.convert.run " + " ".join(kept)
+
+
+def _range_report_command(args, artifact_dir):
+    """The exact range_report command that continues after a skipped report."""
+    parts = [
+        "python",
+        "-m",
+        "tinyllama.convert.range_report",
+        "--artifact",
+        shlex.quote(str(artifact_dir)),
+        "--calib",
+        shlex.quote(str(args.calib)),
+        "--heldout",
+        shlex.quote(str(args.heldout)),
+        "--checkpoint",
+        shlex.quote(str(args.checkpoint)),
+        "--workers",
+        str(args.workers),
+    ]
+    if args.report is not None:
+        parts.extend(["--report", shlex.quote(str(args.report))])
+    if args.test_dims is not None:
+        parts.extend(["--test-dims", shlex.quote(args.test_dims)])
+    if args.manifest is not None:
+        parts.extend(["--manifest", shlex.quote(str(args.manifest))])
+    return " ".join(parts)
 
 
 def _build_tables(dims):
@@ -298,6 +329,18 @@ def main(argv=None):
     parser.add_argument("--heldout-sha256", required=True, metavar="HEX")
     parser.add_argument("--e-res", type=int, default=11, metavar="N")
     parser.add_argument("--report", default=None, metavar="REPORT.json")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=min(8, os.cpu_count() or 1),
+        metavar="N",
+        help="range report worker processes (default: min(8, cpu count))",
+    )
+    parser.add_argument(
+        "--skip-range-report",
+        action="store_true",
+        help="build and validate the artifact, then print the range report command",
+    )
     parser.add_argument("--test-dims", default=None, metavar="JSON")
     parser.add_argument("--manifest", default=None, metavar="PATH")
     args = parser.parse_args(argv)
@@ -397,8 +440,17 @@ def _run(args, argv):
     if failures:
         raise RunError("the written artifact fails validation: {!r}".format(failures[:3]))
 
+    if args.skip_range_report:
+        print(_range_report_command(args, artifact_dir), file=sys.stderr)
+        print(artifact_id)
+        return 0
+
     report = range_report(
-        artifact_dir, heldout, dims=dims, float_model=model
+        artifact_dir,
+        heldout,
+        dims=dims,
+        float_model=model,
+        workers=args.workers,
     )
     if report["range_failure_count"]:
         print(
@@ -416,3 +468,7 @@ def _run(args, argv):
 
     print(artifact_id)
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
