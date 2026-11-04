@@ -1,0 +1,43 @@
+{
+  "primitive": "range conditions, accepted intervals (ARITHMETIC_CONTRACT.md 3.2)",
+  "value_cases": [
+    {"cond": 2, "value": -32768, "accepted": true, "note": "norm quotient w[k], low edge"},
+    {"cond": 2, "value": 32639, "accepted": true, "note": "norm quotient w[k], high edge"},
+    {"cond": 2, "value": -32769, "accepted": false},
+    {"cond": 2, "value": 32640, "accepted": false},
+    {"cond": 2, "value": 0, "accepted": true},
+    {"cond": 3, "value": -32768, "accepted": true, "note": "qw, kw, low edge"},
+    {"cond": 3, "value": 32639, "accepted": true, "note": "qw, kw, high edge"},
+    {"cond": 3, "value": -32769, "accepted": false},
+    {"cond": 3, "value": 32640, "accepted": false},
+    {"cond": 4, "value": -32768, "accepted": true, "note": "vw, low edge"},
+    {"cond": 4, "value": 32639, "accepted": true, "note": "vw, high edge"},
+    {"cond": 4, "value": -32769, "accepted": false},
+    {"cond": 4, "value": 32640, "accepted": false},
+    {"cond": 7, "value": -32768, "accepted": true, "note": "up projection u, low edge"},
+    {"cond": 7, "value": 32639, "accepted": true, "note": "up projection u, high edge"},
+    {"cond": 7, "value": -32769, "accepted": false},
+    {"cond": 7, "value": 32640, "accepted": false},
+    {"cond": 6, "value": -16384, "accepted": true, "note": "gate high part gh, low edge"},
+    {"cond": 6, "value": 16383, "accepted": true, "note": "gate high part gh, high edge"},
+    {"cond": 6, "value": -16385, "accepted": false},
+    {"cond": 6, "value": 16384, "accepted": false},
+    {"cond": 6, "value": 0, "accepted": true},
+    {"cond": 6, "value": 127, "accepted": true},
+    {"cond": 6, "value": 156, "accepted": true, "note": "gh of gw = 40000 is accepted; only gc saturates"},
+    {"cond": 8, "value": -547599908735, "accepted": true, "note": "stream value, low edge"},
+    {"cond": 8, "value": 547599908735, "accepted": true, "note": "stream value, high edge"},
+    {"cond": 8, "value": -547599908736, "accepted": false},
+    {"cond": 8, "value": 547599908736, "accepted": false},
+    {"cond": 8, "value": 0, "accepted": true}
+  ],
+  "condition1_cases": [
+    {"vx": 0, "eps": 1, "accepted": true},
+    {"vx": 25, "eps": 1, "accepted": true, "note": "the worked norm example"},
+    {"vx": 302231454903657293676542, "eps": 1, "accepted": true, "note": "Vx + eps = 2^78 - 1, just inside"},
+    {"vx": 302231454903657293676543, "eps": 1, "accepted": false, "note": "Vx + eps = 2^78, the first rejection"},
+    {"vx": 302231454903657293676543, "eps": 0, "accepted": true, "note": "arithmetic only: the eps of the model is at least 1"},
+    {"vx": 302231454903657293676443, "eps": 85899, "accepted": false, "note": "2^78 - 100 plus the eps at e_res = 11 still crosses 2^78"},
+    {"vx": 614124871775396514406860800, "eps": 85899, "accepted": false, "note": "2048 x (condition 8 bound)^2, about 2^89: rejected"}
+  ]
+}

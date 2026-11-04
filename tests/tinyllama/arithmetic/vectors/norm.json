@@ -1,0 +1,13 @@
+{
+  "primitive": "Vx = sum x^2; sigma = isqrt(Vx + eps); Rc = floor((2^M + floor(sigma/2))/sigma); w = rq(x Rc, K); nr = clamp(w; 2047) (ARITHMETIC_CONTRACT.md 8)",
+  "cases": [
+    {"x": [3, -4], "m": 24, "k": 17, "eps": 1, "expected_vx": 25, "expected_sigma": 5, "expected_rc": 3355443, "expected_w": [77, -102], "expected_nr": [77, -102], "note": "the contract's worked example (illustrative d = 2)"},
+    {"x": [0, 0], "m": 24, "k": 17, "eps": 1, "expected_vx": 0, "expected_sigma": 1, "expected_rc": 16777216, "expected_w": [0, 0], "expected_nr": [0, 0], "note": "sigma = isqrt(eps) = 1 keeps the division defined"},
+    {"x": [-3, -4], "m": 24, "k": 17, "eps": 1, "expected_vx": 25, "expected_sigma": 5, "expected_rc": 3355443, "expected_w": [-77, -102], "expected_nr": [-77, -102], "note": "sign flip of the worked example"},
+    {"x": [1], "m": 24, "k": 17, "eps": 3, "expected_vx": 1, "expected_sigma": 2, "expected_rc": 8388608, "expected_w": [64], "expected_nr": [64], "note": "eps lifts sigma above |x|"},
+    {"x": [5], "m": 32, "k": 20, "eps": 100, "expected_vx": 25, "expected_sigma": 11, "expected_rc": 390451572, "expected_w": [1862], "expected_nr": [1862], "note": "sigma = isqrt(125) = 11"},
+    {"x": [7, 0, -7], "m": 30, "k": 17, "eps": 1, "expected_vx": 98, "expected_sigma": 9, "expected_rc": 119304647, "expected_w": [6372, 0, -6372], "expected_nr": [2047, 0, -2047], "note": "w outside 12 bits, so the norm's clamp acts"},
+    {"x": [1000, 1000], "m": 47, "k": 17, "eps": 1, "expected_vx": 2000000, "expected_sigma": 1414, "expected_rc": 99531462769, "expected_w": [759364798, 759364798], "expected_nr": [2047, 2047], "note": "M = 47, the largest allowed norm pair; w far past 12 bits"},
+    {"x": [2047, 2047, 2047, 2047], "m": 32, "k": 17, "eps": 85899, "expected_vx": 16760836, "expected_sigma": 4104, "expected_rc": 1046532, "expected_w": [16344, 16344, 16344, 16344], "expected_nr": [2047, 2047, 2047, 2047], "note": "eps = 85899, the eps at e_res = 11 (section 5.2)"}
+  ]
+}
