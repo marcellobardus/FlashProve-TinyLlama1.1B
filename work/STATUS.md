@@ -89,6 +89,20 @@ Branch `feature/tinyllama-integer-audit` from main `9e2bdd8f`. Not pushed.
 - Unfixed nits 14 to 16 of the review (dead branch, sort tie rule, rename race) are optional.
 - Pod: start retries every 30 min fail (host out of vCPU or memory); first failure 16:54 Almaty. Marcello chose to keep retrying the same pod (no replacement).
 
+## 2026-11-05 first real-weights run on the pod (partly done)
+
+Source: work/pod_reports/2026-11-04-run2/ (NOTES.md, reports, logs). Code HEAD c321c124. Pod roensk5w2gn6am (cpu3g, 8 vCPU, 32 GB, 0.32 USD/hr, EUR-IS-1), running 22:08:55 to 23:43:25 Almaty (94.5 min, about 0.50 USD), stopped, EXITED verified. Old pod l925odnw8dlhn1 terminated. Versions: Python 3.13.18, torch 2.9.1+cpu, transformers 5.22.1, tokenizers 0.23.3, numpy 2.5.4, pyarrow 26.0.1, huggingface_hub 2.4.0, safetensors 0.8.0.
+
+- P3 passed (model sha256 6e6001da...4933, size 2,200,119,864). P2 passed at e_res 11 (201 tensors, no failures).
+- P5 not ok: calibration inputs match (fit sha256 9b2b8fc6...2fa31, held-out 5c9da767...3bfb8), the prompt check failed under transformers 5.22.1 (D29, O6).
+- P1 failed at the logits check (D28). Layer 0 scores passed.
+- Conversion: wrote artifact id f72efbe39f0df068939b9997fa7010b3d20effdd39b42e1534d95660ce10cdec by 22:41:30, then the range report ran 45 more minutes and was killed, so there is no range-report.json and P4 is open (D30). Peak RSS 3.48 GB.
+- P0 integer run twice: next token 1576 ('The'), lam_last_sha256 50500da8ab2545fea8300490a96ff5b848384e80b790c965f4413de3de671805 in both runs (equal), about 26 s each. Float model (transformers 5.22.1, fp32) greedy token 1576. The artifact was left by the killed conversion, so these numbers are provisional until a complete conversion.
+- bench_layer (24 positions): 0.817 s per layer, peak RSS 465 MB.
+- quality_eval, small runs only, held-out windows, 0 range failures: 1 window x 32 positions: top-1 0.9375, mean KL 0.00332, perplexity float 55.18, integer 55.46. 2 windows x 128 positions: top-1 0.9375, mean KL 0.00375, perplexity float 26.04, integer 26.11. Not the full 8 x 1024 evaluation.
+- Not run: full test suite on the pod, P4, full quality evaluation, a P1 pass.
+- Next: W1 round 5 (T1.7 main guard, P1 diagnosis, T1.8 range report with parallel windows and progress, overflow warning), W3 round 4 (check_inputs for transformers 4.x and 5.x), then restart the stopped pod and rerun.
+
 ## Blockers
 
 - Proof: verifier standard form requires NE > 0 (`routed-experts`); dense TinyLlama cannot reach `YES` without an agreed change. D1 resolved as option a: proof compatibility deferred (O1).
