@@ -127,6 +127,8 @@ base `9e2bdd8f` unless a path is under `work/scratch/` (git ignored probe files,
 - D25 (lead, 2026-11-04). Review findings 1 to 7, 9 to 13 and 17 of work/scratch/artifacts_review2.md are assigned to
   W1 round 4 (T1.6), with tests for every sub-rule the review listed as untested. Finding 14 to 16: nits, optional.
 
+- D26 (Marcello via Chief of Staff, 2026-11-04 22:03 Almaty). Pod l925odnw8dlhn1 could not start (21 failed start attempts from 16:54 to 21:36, host out of vCPU or memory, 0 USD spent). Marcello approved ONE replacement pod of the same type (cpu3g-8-32, secure cloud, 50 GB container disk, no volume, 0.32 USD/hr, stable image tag) in a different data center or host, and terminating the stuck pod once the new one is confirmed running. No other paid resource, no volume, no GPU. The retry routine was deleted. D7 now refers to the replacement pod; its id and data center are in docs/tinyllama/REPRODUCE.md.
+
 ## Open items
 
 - O1 (open, Marcello, deferred by D1). Proof compatibility of a dense TinyLlama. Needs at least: a dense
