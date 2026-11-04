@@ -270,6 +270,14 @@ both are at least 16 (verifier/src/cp_verify.cpp:1400); the per-form shift ceili
 (scales/words_to_policy.py:348-382); norm pairs 24 <= M <= 47, 17 <= K <= 32, K >= M - 14 (cp_verify.cpp:1402-1403)
 and K <= M (`norm-shifts`, verifier/docs/parameter-file.md:317); rp in {0, 1}, here always 1.
 
+Clarification of the per-form shift ceilings (D16, 2026-11-04). In FlashProve the ceiling of a shift depends on
+the digit form of its class of matrix product (`hq`, `hv`, `ho`, `hgD`, `huD`, `hdD`): form 0, 1 or 2 allows
+shifts up to 16, 24 or 32 (verifier/docs/parameter-file.md:122, :125; cp_verify.cpp:1389-1391; kq and kk share
+the form `hq`). A TL-INT-1 artifact has no proof-system lines and states no digit form (INTERFACES.md I2.3), so
+for TL-INT-1 the ceiling of every shift kq, kk, kv, ko, kg, ku, kd is that of form 2, which is 32, and every
+shift is at least 1. A later proof profile (O1) that fixes digit forms must check each shift against the ceiling
+of its class's form, and a lower ceiling is a new contract id (I1).
+
 ## 6. Public lookup tables
 
 All tables are built offline in IEEE 754 float64 by FlashProve's recipes (docs/model.md:125-152), then frozen as
