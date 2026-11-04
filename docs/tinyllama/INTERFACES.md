@@ -228,3 +228,30 @@ only; held-out windows and the prompt set are used for range validation (P4), no
 - Malformed artifacts: one test per code of I2.4, made by mutating a small synthetic artifact.
 - Quality (float vs integer, not bit equality): top-1 agreement and logit KL on the prompt set and held-out windows,
   perplexity on the held-out windows, range failure counts. Float baseline: HF transformers float32 on CPU.
+
+## I7. Reference primitives (W2 exports, W3 conformance test reads)
+
+tinyllama.reference must export the primitives below at package level under exactly these names, with these
+positional arguments in this order. All integers are Python int (unbounded); lists are Python lists of int.
+Source: tests/tinyllama/arithmetic/test_reference_conformance.py (names and calling conventions) and
+tests/tinyllama/arithmetic/ref_independent.py (definitions). The test also accepts the alias in brackets, but W2
+should use the first name.
+
+| name [alias] | arguments in order | returns | vectors file, case key |
+|---|---|---|---|
+| rq [rounded_quotient] | a: int, k: int | int, (a + 2^(k-1)) floor-divided by 2^k | rq.json, cases |
+| clamp | a: int, bound: int | int, a limited to -bound .. bound | clamp.json, cases |
+| isqrt | a: int | int, floor of the square root | isqrt.json, cases |
+| floor_div [floor_quotient] | a: int, b: int | int, a // b | floor_div.json, cases |
+| low8 [balanced_low_byte] | a: int | int in -128 .. 127, ((a + 128) mod 256) - 128 | low8.json, cases |
+| softmax_div [softmax_divide] | acc: int, z: int | int, (2 acc + z) // (2 z) | softmax_div.json, cases |
+| exp_lookup [exp_index] | u: int, exp_table: list of int | int, exp_table[u] if u < 2307, else 0 | softmax_exp_index.json, lookup_cases |
+| argmax [first_argmax] | values: list of int | int, index of the first maximum | argmax.json, cases |
+| gate_key | gw: int | dict with int keys g0, gh, gc, key (a 4-tuple (g0, gh, gc, key) is also accepted) | gate_key.json, cases |
+| norm [rms_norm] | x: list of int, m: int, k: int, eps: int | dict with vx, sigma, rc, w, nr (nr: list of int, compared to expected_nr) | norm.json, cases |
+| pad [pad_window] | ids: list of int | list of int of length 1024, right padded with id 0; ValueError if more than 1024 ids | padding.json, cases |
+
+Conformance test note: once tinyllama.reference exists, the conformance test must not skip. Today it skips the
+whole module when the import fails, skips a primitive when none of its names is found, and skips when no calling
+convention fits; a W2 primitive with a different name or argument order would therefore skip silently. The W3
+follow-up in work/TASKS.md makes these cases fail.
