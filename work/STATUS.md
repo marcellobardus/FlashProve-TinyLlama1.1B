@@ -24,6 +24,12 @@ Branch `feature/tinyllama-integer-audit` from main `9e2bdd8f`. Not pushed.
 - Commands: `rg`/`grep -n` over weight_sums/, prover/, integrations/, lean/, verifier/, scales/; Python struct for RN32 bit patterns; `work/scratch/perm_probe.py` (numpy, random data): HF rotary vs permuted neighbour pairing, max score difference 1.4e-12; without permutation 3.2e3.
 - Fetched for citation only (work/scratch/): transformers modeling_llama.py and utils/chat_template_utils.py at 0c7f5ab8; llama.cpp convert_hf_to_gguf.py and conversion/llama.py at e853ec9a; TinyLlama README.md at fe8a4ea1.
 
+## 2026-11-04 arithmetic contract (done, draft 1.0.0)
+
+- Wrote docs/tinyllama/ARITHMETIC_CONTRACT.md (contract id TL-INT-1): shapes, types, conversion with q/k permutation (verified), gain constants 0x3FB504F3 and 0x3E3504F3, scales and shift positions, rq and clamp examples, bounds at d 2048 and f 5632, norm, tables, rotary, GQA softmax, SwiGLU, logits, argmax, padding, deviation table, pod checks P1 to P5.
+- Commands: `python3 work/scratch/tables_probe.py` (FlashProve tables.py functions with torch stubbed): rotary 32,768 entries each in -4096 .. 4096; EX u0 = 2307; Ts 65,536 entries in -18 .. 4095; texp and tsilu digests equal stored FlashProve policy files (prover/tests/configurations/pinned_no_proof_of_work_roomy, integrations/vllm/integer_model/tests/configurations/tiny_without_clamps). Bounds and rounding examples computed with Python integers (outputs in the contract).
+- Not run: no model load, no conversion, no tests (none exist yet).
+
 ## Blockers
 
 - Proof: verifier standard form requires NE > 0 (`routed-experts`); dense TinyLlama cannot reach `YES` without an agreed change. D1 resolved as option a: proof compatibility deferred (O1).
