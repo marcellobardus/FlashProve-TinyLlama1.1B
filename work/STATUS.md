@@ -93,6 +93,7 @@ Branch `feature/tinyllama-integer-audit` from main `9e2bdd8f`. Not pushed.
 
 Source: work/pod_reports/2026-11-04-run2/ (NOTES.md, reports, logs). Code HEAD c321c124. Pod roensk5w2gn6am (cpu3g, 8 vCPU, 32 GB, 0.32 USD/hr, EUR-IS-1), running 22:08:55 to 23:43:25 Almaty (94.5 min, about 0.50 USD), stopped, EXITED verified. Old pod l925odnw8dlhn1 terminated. Versions: Python 3.13.18, torch 2.9.1+cpu, transformers 5.22.1, tokenizers 0.23.3, numpy 2.5.4, pyarrow 26.0.1, huggingface_hub 2.4.0, safetensors 0.8.0.
 
+- SUPERSEDED (D28): the artifact f72efbe3..., the P0 hash and the quality numbers below were produced with calibration maxima made without the 1/sqrt(dh) score scale. Do not quote them as results. P2 and P3 do not depend on calibration and stand.
 - P3 passed (model sha256 6e6001da...4933, size 2,200,119,864). P2 passed at e_res 11 (201 tensors, no failures).
 - P5 not ok: calibration inputs match (fit sha256 9b2b8fc6...2fa31, held-out 5c9da767...3bfb8), the prompt check failed under transformers 5.22.1 (D29, O6).
 - P1 failed at the logits check (D28). Layer 0 scores passed.

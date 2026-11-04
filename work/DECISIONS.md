@@ -136,6 +136,10 @@ base `9e2bdd8f` unless a path is under `work/scratch/` (git ignored probe files,
 - D31 (lead, 2026-11-05). `RuntimeWarning: overflow encountered in exp` at calibrate.py:208 (SiLU in float32). W1 checks that it is benign (large negative inputs give a sigmoid of 0) and replaces the expression with an equivalent that raises no warning and gives bit-identical maxima, or reports otherwise.
 - D32 (lead, 2026-11-05). The reference keeps no float arithmetic (contract section 12). No float64 BLAS speed-up of the integer matmuls in the reference.
 
+- D28 resolved (lead, 2026-11-05). Cause found by W1 and checked by the lead in the diff: calibrate._attention (the float forward shared by calibration and P1) lacked the 1/sqrt(dh) factor on the scores. The integer path was not affected (the scale is folded into Wq), which is why the integer model agreed with HF. Calibration maxima after the first attention block were wrong, so the artifact f72efbe3... and every number measured with it (P0 hash 50500da8..., quality runs) are SUPERSEDED. Weights are unchanged. Conversion, P4, P1, P0 and quality must be rerun. Fixed in 98342515, merged.
+- D33 (lead, 2026-11-05). P1 logits criterion: relative max difference (max abs difference divided by max abs float logit) at most 1e-3 over all 24 positions, AND the same next token at the last position; the absolute difference and both tokens stay in the report. Reason: float32 over 22 layers with a different summation order makes 1e-3 absolute too tight for logits of size 10 to 20. The threshold is not tuned on results: if it fails, report the numbers and decide.
+- D34 (lead, 2026-11-05). P4 covers both sets (held-out first, then fit) by default in range_report; the pod run uses `--sets both --workers 8`.
+
 ## Open items
 
 - O1 (open, Marcello, deferred by D1). Proof compatibility of a dense TinyLlama. Needs at least: a dense
