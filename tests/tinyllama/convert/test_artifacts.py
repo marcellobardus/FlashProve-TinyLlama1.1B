@@ -399,6 +399,7 @@ def test_a03_bad_path(artifact, tmp_path, bad_path):
     path = _copy(artifact, tmp_path)
     manifest = _manifest(path)
     _entry(manifest, "emb.i32")["path"] = bad_path
+    manifest["files"].sort(key=lambda entry: entry["path"])
     _write_manifest(path, manifest)
     _assert_code(path, "A03")
 

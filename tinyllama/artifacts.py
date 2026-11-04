@@ -548,17 +548,7 @@ def _recipe_digests(dims):
 def _table_sha(mapping, name, path):
     if not isinstance(mapping, dict):
         return None
-    candidates = (
-        path,
-        Path(path).name,
-        path[: -len(".i32")],
-        name,
-        name + ".i32",
-    )
-    for key in candidates:
-        if key in mapping:
-            return mapping[key]
-    return None
+    return mapping.get(path)
 
 
 def _array_bytes(array, dtype):
@@ -825,6 +815,8 @@ def validate_artifact(directory, *, dims=FULL):
     manifest_path = directory / "manifest.json"
 
     try:
+        if not os.path.isfile(manifest_path):
+            raise OSError("manifest.json is missing or not a regular file")
         manifest_raw = _read(manifest_path)
     except OSError as exc:
         return [("A01", "manifest.json", "cannot read manifest: {}".format(exc))]
@@ -840,6 +832,7 @@ def validate_artifact(directory, *, dims=FULL):
 
     if (
         manifest.get("format") != "tl-int-artifact"
+        or not _is_int(manifest.get("format_version"))
         or manifest.get("format_version") != 1
         or manifest.get("contract") != contract.CONTRACT_ID
     ):
@@ -853,17 +846,20 @@ def validate_artifact(directory, *, dims=FULL):
 
     entries = manifest.get("files")
     if not isinstance(entries, list):
-        failures.append(("A02", "manifest.json", "files is not a list"))
+        failures.append(("A01", "manifest.json", "files is not a list"))
         entries = []
 
     listed = set()
     content_skipped = set()
     params = None
-    params_checked = False
+    seen_paths = set()
+    order_paths = []
+    order_complete = True
 
     for entry in entries:
         if not isinstance(entry, dict):
             failures.append(("A08", "manifest.json", "file entry is not an object"))
+            order_complete = False
             continue
         path = entry.get("path")
         dtype = entry.get("dtype")
@@ -873,11 +869,19 @@ def validate_artifact(directory, *, dims=FULL):
 
         if not isinstance(path, str):
             failures.append(("A08", "manifest.json", "file path is not a string"))
+            order_complete = False
             continue
+        if path in seen_paths:
+            failures.append(
+                ("A01", "manifest.json", "duplicate path in files: %s" % path)
+            )
+        else:
+            seen_paths.add(path)
+        order_paths.append(path)
         listed.add(path)
 
         path_bad = False
-        if os.path.isabs(path) or ".." in path or "\\" in path:
+        if os.path.isabs(path) or ".." in Path(path).parts or "\\" in path:
             path_bad = True
         candidate = os.path.join(str(directory), path)
         current = str(directory)
@@ -907,17 +911,25 @@ def validate_artifact(directory, *, dims=FULL):
         shape_ok = (
             dtype == expected_dtype
             and isinstance(shape, list)
+            and all(_is_int(dim) for dim in shape)
             and shape == list(expected_shape)
         )
 
-        exists = os.path.exists(candidate)
-        if not exists:
-            failures.append(("A04", path, "listed file is absent"))
+        if not os.path.isfile(candidate):
+            failures.append(
+                ("A04", path, "listed file is absent or not a regular file")
+            )
+            content_skipped.add(path)
+            continue
+
+        try:
+            actual_size = os.path.getsize(candidate)
+        except OSError as exc:
+            failures.append(("A06", path, "cannot stat file: %s" % exc))
             content_skipped.add(path)
             continue
 
         if is_kl:
-            actual_size = os.path.getsize(candidate)
             if actual_size != dims.L * 13 * 4:
                 failures.append(
                     (
@@ -955,7 +967,6 @@ def validate_artifact(directory, *, dims=FULL):
                 )
                 size_ok = False
 
-        actual_size = os.path.getsize(candidate)
         if not _is_int(listed_bytes) or actual_size != listed_bytes:
             failures.append(
                 (
@@ -971,22 +982,35 @@ def validate_artifact(directory, *, dims=FULL):
             content_skipped.add(path)
             continue
 
-        if not isinstance(expected_sha, str) or sha256_file(candidate) != expected_sha:
+        if not isinstance(expected_sha, str):
+            failures.append(("A07", path, "sha256 differs"))
+            content_skipped.add(path)
+            continue
+        try:
+            actual_sha = sha256_file(candidate)
+        except OSError as exc:
+            failures.append(("A06", path, "cannot read file: %s" % exc))
+            content_skipped.add(path)
+            continue
+        if actual_sha != expected_sha:
             failures.append(("A07", path, "sha256 differs"))
             content_skipped.add(path)
             continue
 
-        raw = _read(candidate)
+        try:
+            raw = _read(candidate)
+        except OSError as exc:
+            failures.append(("A06", path, "cannot read file: %s" % exc))
+            content_skipped.add(path)
+            continue
         if path == "params.json":
             try:
                 params = _parse_canonical_json(raw)
             except _JSONProblem as exc:
                 failures.append(("A15", path, str(exc)))
-                params_checked = True
                 continue
             for detail in _params_problems(params, dims):
                 failures.append(("A15", path, detail))
-            params_checked = True
 
         failures.extend(
             _content_failure(
@@ -1003,7 +1027,11 @@ def validate_artifact(directory, *, dims=FULL):
         table_path = directory / path
         if not table_path.is_file():
             continue
-        raw = _read(table_path)
+        try:
+            raw = _read(table_path)
+        except OSError as exc:
+            failures.append(("A06", path, "cannot read table: %s" % exc))
+            continue
         recipe = recipe_arrays[name]
         actual = np.frombuffer(raw, dtype="<i4")
         if actual.size != recipe.size:
@@ -1070,7 +1098,13 @@ def validate_artifact(directory, *, dims=FULL):
                     and path not in content_skipped
                     and (directory / path).is_file()
                 ):
-                    actual = sha256_file(directory / path)
+                    try:
+                        actual = sha256_file(directory / path)
+                    except OSError as exc:
+                        failures.append(
+                            ("A06", path, "cannot read table: %s" % exc)
+                        )
+                        continue
                     if expected_sha != actual:
                         failures.append(
                             (
@@ -1102,10 +1136,14 @@ def validate_artifact(directory, *, dims=FULL):
             if rel not in listed:
                 failures.append(("A05", rel, "file is not listed in the manifest"))
 
-    # If params.json was not listed at all, no A15 run happened above.
-    if not params_checked and isinstance(params, dict):
-        for detail in _params_problems(params, dims):
-            failures.append(("A15", "params.json", detail))
+    if order_complete and order_paths != sorted(order_paths):
+        failures.append(("A01", "manifest.json", "files is not sorted by path"))
+
+    for path in expected:
+        if path not in listed:
+            failures.append(
+                ("A04", path, "expected file is not listed in the manifest")
+            )
 
     # I2.2/D13 (5): the directory name is the artifact id.
     directory_failure = _directory_name_failure(directory, manifest_raw)
