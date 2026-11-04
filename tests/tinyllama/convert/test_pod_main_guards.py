@@ -10,6 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 MODULES = (
     "tinyllama.convert.run",
     "tinyllama.convert.check_permutation",
+    "tinyllama.convert.range_report",
 )
 
 

@@ -45,6 +45,8 @@ cell boundary.
 import hashlib
 import math
 import os
+import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -436,8 +438,15 @@ class _IntegerRangeFailure(Exception):
         }
 
 
-def _run_integer_window(artifact, ids, dims):
-    """Run the integer reference on one window, returning a failure or None."""
+def _run_integer_window(
+    artifact, ids, dims, *, progress=None, progress_interval=60.0
+):
+    """Run the integer reference on one window, returning a failure or None.
+
+    progress is called as progress(layer, layer_count, elapsed_seconds) after
+    a layer, at most once every progress_interval seconds.  A test can pass
+    zero to see one call per layer.
+    """
     from tinyllama.reference.layer import RangeFailure, layer as reference_layer
     from tinyllama.reference.primitives import clamp, isqrt, rq
 
@@ -450,6 +459,8 @@ def _run_integer_window(artifact, ids, dims):
     x = np.asarray(artifact.emb[np.asarray(ids, dtype=np.int64)], dtype=np.int64)
     kl = np.asarray(artifact.kl, dtype=np.int64)
     params = artifact.params
+    started = time.monotonic()
+    last_progress = started
 
     for index in range(dims.L):
         row = kl[index]
@@ -484,6 +495,11 @@ def _run_integer_window(artifact, ids, dims):
             )
         except RangeFailure as failure:
             return failure.as_dict()
+        if progress is not None:
+            now = time.monotonic()
+            if now - last_progress >= float(progress_interval):
+                progress(index + 1, dims.L, now - started)
+                last_progress = now
 
     for position in range(x.shape[0]):
         try:
@@ -500,7 +516,134 @@ def _run_integer_window(artifact, ids, dims):
     return None
 
 
-def range_report(artifact_or_dir, windows, dims=None, *, float_model=None):
+def _integer_window_groups(windows):
+    """Split windows into named groups in their input order.
+
+    A plain array is one group named "heldout", which is the name that run.py
+    has always used.  A mapping (or a sequence of (name, array) pairs) keeps
+    its order, so a parallel run can rebuild the sequential per_window order.
+    """
+    if isinstance(windows, dict):
+        return [(str(name), np.asarray(array)) for name, array in windows.items()]
+    if isinstance(windows, np.ndarray):
+        return [("heldout", windows)]
+    if isinstance(windows, (list, tuple)) and windows:
+        first = windows[0]
+        if (
+            isinstance(first, (list, tuple))
+            and len(first) == 2
+            and isinstance(first[0], str)
+        ):
+            return [(str(name), np.asarray(array)) for name, array in windows]
+    return [("heldout", np.asarray(windows))]
+
+
+def _validated_groups(windows, dims):
+    groups = []
+    for name, values in _integer_window_groups(windows):
+        array = np.asarray(values)
+        if array.ndim != 2:
+            raise CalibrationError("windows must have shape (n_windows, T)")
+        if array.dtype.kind not in "iu":
+            raise CalibrationError("windows must be integers")
+        if array.size and (int(array.min()) < 0 or int(array.max()) >= dims.V):
+            raise CalibrationError(
+                "a token id is outside 0 .. {}".format(dims.V - 1)
+            )
+        groups.append(
+            (name, np.ascontiguousarray(array, dtype=np.int32))
+        )
+    return groups
+
+
+def _merge_maxima(destination, maxima):
+    for site, of_site in maxima.items():
+        merged = destination.setdefault(site, {})
+        for layer, value in of_site.items():
+            if value > merged.get(layer, 0.0):
+                merged[layer] = value
+
+
+def _process_context(start_method):
+    import multiprocessing
+
+    methods = multiprocessing.get_all_start_methods()
+    if start_method is None:
+        start_method = "fork" if "fork" in methods else "spawn"
+    if start_method not in methods:
+        raise CalibrationError(
+            "start method {!r} is not available; choose one of {}".format(
+                start_method, ", ".join(methods)
+            )
+        )
+    return multiprocessing.get_context(start_method)
+
+
+_WORKER_ARTIFACT = None
+_WORKER_DIMS = None
+_WORKER_PROGRESS_INTERVAL = 60.0
+
+
+def _parallel_worker_init(directory, dims, progress_interval):
+    global _WORKER_ARTIFACT, _WORKER_DIMS, _WORKER_PROGRESS_INTERVAL
+
+    from tinyllama.artifacts import load_artifact
+
+    _WORKER_ARTIFACT = load_artifact(directory, dims=dims)
+    _WORKER_DIMS = dims
+    _WORKER_PROGRESS_INTERVAL = float(progress_interval)
+
+
+def _parallel_worker_run(task):
+    global_number, set_name, ids = task
+    worker_pid = os.getpid()
+
+    def layer_progress(layer, layer_count, elapsed):
+        print(
+            "range report: window {} set {} layer {}/{} elapsed {:.0f} s "
+            "(worker pid {})".format(
+                int(global_number) + 1,
+                set_name,
+                layer,
+                layer_count,
+                elapsed,
+                worker_pid,
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+
+    started = time.perf_counter()
+    failure = _run_integer_window(
+        _WORKER_ARTIFACT,
+        ids,
+        _WORKER_DIMS,
+        progress=layer_progress,
+        progress_interval=_WORKER_PROGRESS_INTERVAL,
+    )
+    return failure, time.perf_counter() - started
+
+
+def _window_progress_line(done, total, set_name, seconds, failure_count):
+    print(
+        "range report: window {}/{} set {} {:.1f} s range failures so far {}".format(
+            done, total, set_name, seconds, failure_count
+        ),
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+def range_report(
+    artifact_or_dir,
+    windows,
+    dims=None,
+    *,
+    float_model=None,
+    workers=1,
+    progress_interval=60.0,
+    start_method=None,
+):
     """Return the P4 range report as a JSON serialisable dict.
 
     The tuple of per layer pieces in tinyllama.reference is enough to run the
@@ -512,6 +655,13 @@ def range_report(artifact_or_dir, windows, dims=None, *, float_model=None):
     compared with the 2047 cell limit. If reference.layer cannot be imported,
     every window is marked "integer reference not available".
 
+    workers=1 runs the windows sequentially.  workers>1 sends only the global
+    window number, the set name and the window ids to worker processes; each
+    worker loads the artifact itself with read only memmaps.  Layer progress
+    lines come from the workers and window progress lines come from the
+    parent.  Results are put back in input order, so the report is the same as
+    the sequential one apart from per window seconds.
+
     QUESTION FOR LEAD: the contract does not say whether P4 wants one report
     per window or one report over the held-out set. This function reports both:
     a top level range_failure list and a per_window list.
@@ -520,20 +670,24 @@ def range_report(artifact_or_dir, windows, dims=None, *, float_model=None):
 
     if dims is None:
         dims = FULL
+    if workers < 1:
+        raise CalibrationError("workers must be at least 1")
+    workers = int(workers)
+
     if isinstance(artifact_or_dir, (str, bytes, os.PathLike)):
         artifact = load_artifact(artifact_or_dir, dims=dims)
     else:
         artifact = artifact_or_dir
     dims = getattr(artifact, "dims", dims)
 
-    array = np.asarray(windows)
-    if array.ndim != 2:
-        raise CalibrationError("windows must have shape (n_windows, T)")
-    if array.dtype.kind not in "iu":
-        raise CalibrationError("windows must be integers")
-    if array.size and (int(array.min()) < 0 or int(array.max()) >= dims.V):
-        raise CalibrationError("a token id is outside 0 .. {}".format(dims.V - 1))
-    array = np.ascontiguousarray(array, dtype=np.int32)
+    groups = _validated_groups(windows, dims)
+    items = []
+    number = 0
+    for set_name, array in groups:
+        for local_index in range(array.shape[0]):
+            items.append((set_name, local_index, number, array[local_index]))
+            number += 1
+    total = len(items)
 
     try:
         from tinyllama.reference.layer import RangeFailure  # noqa: F401
@@ -541,23 +695,117 @@ def range_report(artifact_or_dir, windows, dims=None, *, float_model=None):
     except ImportError:
         integer_available = False
 
-    per_window = []
+    per_window = [None] * total
     failures = []
-    for number, ids in enumerate(array):
-        entry = {"window": number, "integer_reference": "ran", "range_failure": None}
-        if integer_available:
-            failure = _run_integer_window(artifact, ids, dims)
-            entry["range_failure"] = failure
+
+    if integer_available and workers > 1:
+        directory = getattr(artifact, "directory", None)
+        if directory is None and isinstance(
+            artifact_or_dir, (str, bytes, os.PathLike)
+        ):
+            directory = artifact_or_dir
+        if directory is None:
+            raise CalibrationError(
+                "a parallel range report needs an artifact directory; pass "
+                "the directory or an artifact object with a directory attribute"
+            )
+
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        context = _process_context(start_method)
+        futures = {}
+        results = [None] * total
+        with ProcessPoolExecutor(
+            max_workers=workers,
+            mp_context=context,
+            initializer=_parallel_worker_init,
+            initargs=(str(directory), dims, progress_interval),
+        ) as executor:
+            for position, (set_name, _index, global_number, ids) in enumerate(items):
+                task = (global_number, set_name, ids)
+                futures[executor.submit(_parallel_worker_run, task)] = position
+
+            done = 0
+            failure_count = 0
+            for future in as_completed(futures):
+                position = futures[future]
+                try:
+                    failure, seconds = future.result()
+                except Exception as exc:
+                    raise CalibrationError(
+                        "a parallel range report worker failed: {}".format(exc)
+                    ) from exc
+                set_name, local_index, global_number, _ids = items[position]
+                results[position] = (failure, seconds)
+                if failure is not None:
+                    failure_count += 1
+                done += 1
+                _window_progress_line(
+                    done, total, set_name, seconds, failure_count
+                )
+
+        for position, (failure, seconds) in enumerate(results):
+            set_name, local_index, global_number, _ids = items[position]
+            per_window[position] = {
+                "window": global_number,
+                "set": set_name,
+                "index": local_index,
+                "integer_reference": "ran",
+                "range_failure": failure,
+                "seconds": seconds,
+            }
             if failure is not None:
-                failures.append(dict(failure, window=number))
-        else:
-            entry["integer_reference"] = "not available"
-        per_window.append(entry)
+                failures.append(dict(failure, window=global_number))
+    else:
+        done = 0
+        for position, (set_name, local_index, global_number, ids) in enumerate(items):
+            entry = {
+                "window": global_number,
+                "set": set_name,
+                "index": local_index,
+                "integer_reference": "ran",
+                "range_failure": None,
+            }
+            if integer_available:
+                def layer_progress(layer, layer_count, elapsed):
+                    print(
+                        "range report: window {} set {} layer {}/{} "
+                        "elapsed {:.0f} s".format(
+                            global_number + 1, set_name, layer, layer_count,
+                            elapsed,
+                        ),
+                        file=sys.stderr,
+                        flush=True,
+                    )
+
+                started = time.perf_counter()
+                failure = _run_integer_window(
+                    artifact,
+                    ids,
+                    dims,
+                    progress=layer_progress,
+                    progress_interval=progress_interval,
+                )
+                entry["range_failure"] = failure
+                entry["seconds"] = time.perf_counter() - started
+                if failure is not None:
+                    failures.append(dict(failure, window=global_number))
+            else:
+                entry["integer_reference"] = "not available"
+                entry["seconds"] = 0.0
+            per_window[position] = entry
+            done += 1
+            _window_progress_line(
+                done, total, set_name, entry["seconds"], len(failures)
+            )
 
     float_maxima = None
     float_over = []
     if float_model is not None:
-        float_maxima = calibrate(float_model, array)
+        merged = {}
+        for _set_name, array in groups:
+            _merge_maxima(merged, calibrate(float_model, array))
+        float_maxima = merged
         for site, of_site in float_maxima.items():
             for layer, value in of_site.items():
                 if value > 2047.0:
@@ -568,7 +816,8 @@ def range_report(artifact_or_dir, windows, dims=None, *, float_model=None):
     return {
         "contract": contract.CONTRACT_ID,
         "artifact_id": getattr(artifact, "id", None),
-        "windows": int(array.shape[0]),
+        "windows": total,
+        "sets": [name for name, _array in groups],
         "integer_reference": "ran" if integer_available else "not available",
         "range_failures": failures,
         "range_failure_count": len(failures),
