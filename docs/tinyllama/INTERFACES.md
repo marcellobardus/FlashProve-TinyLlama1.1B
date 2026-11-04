@@ -166,7 +166,7 @@ indices ascending. The first failing (condition, position, index) is reported an
   `token_ids_sha256_u32le`, `records` (a list of name, layer, shape, sha256 of the values as int64 little endian
   in C order, min, max), `range_failure` (null, or condition number, name, layer, position, index, value),
   `next_token`, `lam_last_sha256`, `top16` (the 16 largest last-position logits as [id, value], by value
-  descending, then id ascending). About 470 records (21 per layer and 8 after the layers), about 100 KB per prompt.
+  descending, then id ascending). 469 records, an exact count from the I3.1 table (21 per layer times 22 layers, plus 7 after the layers), about 100 KB per prompt.
 - Full trace (not committed): `traces/TL-INT-1/<artifact_id>/<prompt id>.<mode>/NAME.LL.npy` (numpy `<i8`), git
   ignored by `/traces/`. P0 in prefix mode is about 0.2 GB (24 positions).
 - Size rule for git: one committed vector file at most 256 KB, all of tests/tinyllama/vectors at most 2 MB.
