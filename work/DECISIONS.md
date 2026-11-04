@@ -106,6 +106,20 @@ base `9e2bdd8f` unless a path is under `work/scratch/` (git ignored probe files,
   so only the identity (condition, layer, position, index) matters, and a compute-order definition is the one a
   backend can follow without computing past a failure.
 
+- D18 (lead, 2026-11-04). Per-position logits record. W2 must emit the `lam` record for every position
+  (INTERFACES.md I3.1 lists it; tinyllama/reference/model.py already does). Answer to W3 round 3.
+- D19 (lead, 2026-11-04). Integer to float logit conversion is `lam / 2^s` with s = E_logit (contract line 245).
+  quality_eval.py uses exactly this. Answer to W3 round 3.
+- D20 (lead, 2026-11-04). F1 behaviour in `load_artifact` is accepted: when another failure exists, the
+  directory name A07 is left out so the first sorted failure stays the earlier one; `validate_artifact` still
+  lists every failure including A07. Tests that use temporary directories need no renaming. Answer to W1 round 3.
+- D21 (lead, 2026-11-04). The P4 range report keeps both views: the held-out set as a whole and each window.
+- D22 (lead, 2026-11-04). The transformers version used for P1 is not guessed. The pod run installs the newest
+  release compatible with torch 2.9.1, and the exact versions installed (`pip freeze` lines for torch,
+  transformers, tokenizers, numpy, pyarrow) are written into REPRODUCE.md after the first pod run and then pinned.
+- D23 (lead, 2026-11-04). `e_res` stays fixed at 11 (default) for the first pod run. An automatic search over
+  3 to 14 is added only if P4 reports range failures.
+
 ## Open items
 
 - O1 (open, Marcello, deferred by D1). Proof compatibility of a dense TinyLlama. Needs at least: a dense
@@ -128,3 +142,26 @@ base `9e2bdd8f` unless a path is under `work/scratch/` (git ignored probe files,
 - O5 (open, W2/W3). Cross check against FlashProve model.py (T2.3): model.py needs torch and its parameter file
   reader refuses NE = 0 with digests (parameters.py:526-527). Hypothesis: the cross check can drive model.py's
   arithmetic functions directly with constructed parameters; to be tried on the pod.
+
+## 2026-11-04 integration round 3 (done)
+
+- Merged into feature/tinyllama-integer-audit with --no-ff: c419d358 (W2 T2.2), b2cae17c (W3 round 3),
+  3ef23887 (W1 round 3). No conflicts. Full suite on the box: `python3 -m pytest tests/tinyllama -q`, 520 passed,
+  1 xpassed in 3:42. The xpass is the F1 test, whose xfail marker is being removed in a separate test commit.
+- W1 round 3 (df69f3fe F1, 9f526481 F2, 13fd4a91 T1.3 calibrate/fit/run, 2180bded T1.5 check_permutation).
+  W3 round 3 (0f1c11d4 F1 and F2 tests, 0ed9696d T3.4 check_inputs, d902ec92 T3.3 metrics and quality_eval).
+- Nothing was run on real weights. P1 to P5, conversion, P4, the P0 run, bench_layer and quality_eval all need the pod.
+- Pod prerequisites found in the worker reports: check_inputs.py needs Python 3.13 (or matching random.Random and
+  numpy format behaviour), the stock pod image has an older Python, so install 3.13 first (for example with uv).
+  quality_eval.py docstring says GPU pod; it runs on the CPU pod (float32 on CPU). Do not copy the Bitdeer key or
+  Claude credentials to the pod: coding stays on the box.
+- Pod command order (repo at /workspace/repo, checkpoint at /workspace/ckpt):
+  1. `python3 tests/tinyllama/eval/check_inputs.py --checkpoint-dir /workspace/ckpt --parquet WIKITEXT_PARQUET --out p5.json --fit-npy /workspace/calib/fit.npy --heldout-npy /workspace/calib/heldout.npy` (P5, and writes the calibration windows).
+  2. `PYTHONPATH=. python3 -m tinyllama.convert.check_permutation p3 --checkpoint /workspace/ckpt --report p3.json`
+  3. `... check_permutation p1 --checkpoint /workspace/ckpt --report p1.json`
+  4. `... check_permutation p2 --checkpoint /workspace/ckpt --report p2.json --e-res 11`
+  5. `PYTHONPATH=. python3 -m tinyllama.convert.run --checkpoint /workspace/ckpt --out /workspace/repo/artifacts/TL-INT-1 --calib /workspace/calib/fit.npy --calib-sha256 FIT_SHA256 --heldout /workspace/calib/heldout.npy --heldout-sha256 HELDOUT_SHA256 --report /workspace/repo/artifacts/TL-INT-1/range-report.json`
+  6. `python -m tinyllama.reference.run --artifact DIR --prompt P0`, twice, equal `lam_last_sha256`.
+  7. bench_layer, then `python3 tests/tinyllama/eval/quality_eval.py --checkpoint /workspace/ckpt --artifact DIR --heldout /workspace/calib/heldout.npy --out-json quality.json --out-md quality.md`.
+  Peak RAM estimates from W1 (design, not measured): calibration 680 MiB, folding 2.35 GiB, write_artifact 4.35 GiB,
+  P1 5 to 6 GB, P2 about 1 GB. Pod has 32 GB.

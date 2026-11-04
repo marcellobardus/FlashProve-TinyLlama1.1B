@@ -63,3 +63,8 @@ W2 T2.2 2026-11-04: done on feature/tinyllama-w2-model (c8e1f2e8, d7f62c58, 269e
 merged. Open performance item: numpy int64 matmul has no BLAS, so window mode at 1024 positions at full size may
 take hours and first_choice is a Python loop; P0 prefix mode (24 positions) is the milestone and is expected to be
 fine. Measure with bench_layer on the pod; T2.4 only if needed.
+
+Integration 2026-11-04 (round 3): merges c419d358 (W2 T2.2), b2cae17c (W3 T3.3, T3.4, F1/F2 tests), 3ef23887 (W1
+F1, F2, T1.3, T1.5); 520 passed, 1 xpassed. Done: F1, F2, T1.3, T1.5, T2.2, T3.3, T3.4 (code and synthetic tests;
+real-weight runs pending on the pod). Next: restart the pod and run the pod checks P1 to P5, conversion, P4, the
+P0 run, bench_layer and quality_eval; second review of tinyllama/artifacts.py; T4.1; T2.3; T2.4 only if needed.

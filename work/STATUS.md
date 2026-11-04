@@ -76,6 +76,12 @@ Branch `feature/tinyllama-integer-audit` from main `9e2bdd8f`. Not pushed.
   fine. Measure with bench_layer on the pod. Follow-up T2.4 only if the measurements show a need.
 - Next: merge W2 T2.2 into the integration branch; bench_layer on the pod; W1 follow-ups F1 and F2, then T1.3.
 
+## 2026-11-04 round 3 integrated (done)
+
+- W2 T2.2, W3 T3.3 and T3.4, W1 F1, F2, T1.3, T1.5 are merged. 520 passed, 1 xpassed on the box (3:42).
+- Not run: anything on real weights. Next step is the pod run, details in work/DECISIONS.md (integration round 3).
+- Not pushed. No draft PR yet.
+
 ## Blockers
 
 - Proof: verifier standard form requires NE > 0 (`routed-experts`); dense TinyLlama cannot reach `YES` without an agreed change. D1 resolved as option a: proof compatibility deferred (O1).
