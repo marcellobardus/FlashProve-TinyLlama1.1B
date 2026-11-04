@@ -6,9 +6,10 @@
 #       --checkpoint /workspace/ckpt --workers 8 \
 #       --report /workspace/repo/artifacts/TL-INT-1/range-report.json
 #
-# --sets both adds the fit windows to the report.  --max-windows K keeps the
-# first K windows of each selected set.  --checkpoint is optional; without it
-# the report has float_maxima null and float_over_limit [].
+# --sets both, the default, reports the held-out windows first and then the fit
+# windows; heldout or fit selects one set.  --max-windows K keeps the first K
+# windows of each selected set.  --checkpoint is optional; without it the report
+# has float_maxima null and float_over_limit [].
 #
 # Add --test-dims '{"L":2,"D":64,"H":4,"G":2,"DH":16,"F":128,"V":256,"T":32}'
 # and --manifest PATH only for the synthetic tests of this repository.
@@ -109,9 +110,9 @@ def _main(argv=None):
     parser.add_argument(
         "--sets",
         choices=("heldout", "fit", "both"),
-        default="heldout",
+        default="both",
         metavar="SET",
-        help="heldout, fit or both (default: heldout)",
+        help="heldout, fit or both (default: both)",
     )
     parser.add_argument("--max-windows", type=int, default=None, metavar="K")
     parser.add_argument("--checkpoint", default=None, metavar="DIR")

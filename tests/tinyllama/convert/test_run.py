@@ -38,7 +38,7 @@ def pipeline(tmp_path):
     }
 
 
-def _arguments(pipeline, out, report=None):
+def _arguments(pipeline, out, report=None, range_sets=None):
     arguments = [
         "--checkpoint",
         str(pipeline["checkpoint"]["dir"]),
@@ -71,6 +71,8 @@ def _arguments(pipeline, out, report=None):
     ]
     if report is not None:
         arguments.extend(["--report", str(report)])
+    if range_sets is not None:
+        arguments.extend(["--range-sets", range_sets])
     return arguments
 
 
@@ -102,10 +104,30 @@ def test_pipeline_end_to_end_and_deterministic(pipeline, tmp_path, capsys):
 
     report = json.loads(report_path.read_text(encoding="ascii"))
     assert report["contract"] == "TL-INT-1"
-    assert report["windows"] == 1
+    assert report["sets"] == ["heldout", "fit"]
+    assert report["windows"] == 3
     assert report["range_failure_count"] == 0
     assert report["integer_reference"] == "ran"
     assert report["float_maxima"] is not None
+
+
+def test_range_sets_heldout_keeps_the_old_behaviour(pipeline, tmp_path):
+    report_path = tmp_path / "heldout-report.json"
+    assert (
+        run.main(
+            _arguments(
+                pipeline,
+                tmp_path / "out-heldout",
+                report_path,
+                range_sets="heldout",
+            )
+        )
+        == 0
+    )
+    report = json.loads(report_path.read_text(encoding="ascii"))
+    assert report["sets"] == ["heldout"]
+    assert report["windows"] == 1
+    assert [entry["set"] for entry in report["per_window"]] == ["heldout"]
 
 
 def test_pipeline_refuses_a_bad_calibration_digest(pipeline, tmp_path):

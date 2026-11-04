@@ -201,6 +201,8 @@ def test_module_subprocess_workers_two(pod, tmp_path):
         "tinyllama.convert.range_report",
         "--artifact",
         str(pod["artifact_dir"]),
+        "--calib",
+        str(pod["calib_path"]),
         "--heldout",
         str(pod["heldout_path"]),
         "--workers",
@@ -225,20 +227,23 @@ def test_module_subprocess_workers_two(pod, tmp_path):
     assert REQUIRED_KEYS <= set(report)
     assert set(report) - REQUIRED_KEYS <= {"sets", "workers"}
     assert report["artifact_id"] == pod["artifact_dir"].name
-    assert report["windows"] == len(pod["heldout"])
+    n_heldout = len(pod["heldout"])
+    n_fit = len(pod["fit"])
+    assert report["sets"] == ["heldout", "fit"]
+    assert report["windows"] == n_heldout + n_fit
     assert report["range_failure_count"] == 0
     assert report["float_maxima"] is None
     assert report["float_over_limit"] == []
     assert [entry["set"] for entry in report["per_window"]] == [
         "heldout"
-    ] * len(pod["heldout"])
+    ] * n_heldout + ["fit"] * n_fit
     assert [entry["index"] for entry in report["per_window"]] == list(
-        range(len(pod["heldout"]))
-    )
+        range(n_heldout)
+    ) + list(range(n_fit))
     assert [entry["window"] for entry in report["per_window"]] == list(
-        range(len(pod["heldout"]))
+        range(n_heldout + n_fit)
     )
-    assert _window_progress_count(result.stderr) == len(pod["heldout"])
+    assert _window_progress_count(result.stderr) == n_heldout + n_fit
     layer_lines = [
         line
         for line in result.stderr.splitlines()
@@ -246,7 +251,7 @@ def test_module_subprocess_workers_two(pod, tmp_path):
         and " layer " in line
         and "(worker pid " in line
     ]
-    assert len(layer_lines) == len(pod["heldout"]) * pod["dims"].L
+    assert len(layer_lines) == (n_heldout + n_fit) * pod["dims"].L
 
 
 def test_importing_these_modules_does_not_load_torch_or_transformers():
@@ -359,6 +364,7 @@ def test_run_skip_range_report(pod, tmp_path, capsys):
     assert "--checkpoint {}".format(pod["checkpoint_dir"]) in command
     assert "--workers {}".format(min(8, os.cpu_count() or 1)) in command
     assert "--report {}".format(report_path) in command
+    assert "--sets both" in command
 
 
 def test_load_artifact_arrays_are_read_only_memmaps(pod):
