@@ -68,6 +68,12 @@ Canonical JSON as above, with: `contract`; every constant of I1; `e_res`; `eps1`
 `epsF`; `MF`, `KF`; `s` (E_logit); `digests` with `trope`, `texp`, `tsilu`, each a list of 8 u32 words
 (FlashProve digest, docs/model.md:154-160); `tables_sha256` per table file. No proof-system lines (no policy.txt).
 
+Constant names (D13 (3)): the keys are spelled exactly as follows, and no other spelling is accepted. Shape
+constants: `L`, `d`, `H`, `G`, `dh`, `f`, `V`, `T`. Other constants: `NE`, `lt`, `cs`, `theta0`, `S`, `rx`, `eg`,
+`smax`, `cw`, `weight_bound`, `embedding_bound`, `u0`, `c0_bits`, `cq_bits`, `pad_id`, `gcl`. An alias spelling
+(for example `D`, `DH`, `EXP_S`) is refused under A15 with detail "non canonical constant name".
+(Source: tinyllama/artifacts.py at 2a211c83, `_dims_constants`, `_other_constants`, `NON_CANONICAL_CONSTANT_NAMES`.)
+
 ### I2.4 Validation rules
 
 `validate_artifact` applies all rules and reports every failure; `load_artifact` calls it first and loads nothing
@@ -81,16 +87,33 @@ if any rule fails. Rejection codes (each needs a malformed-artifact test by W3):
 | A04 missing | a listed file is absent |
 | A05 unlisted | a file in the directory is not listed (manifest.json excepted) |
 | A06 size | bytes differ from the product of shape and item size, or from the file's size (truncated or trailing bytes) |
-| A07 sha256 | a file's sha256 differs |
-| A08 shape | dtype or shape differ from I2.1 |
+| A07 sha256 | a file's sha256 differs; the directory name differs from the artifact id (path manifest.json); a caller supplied expected_id differs from the artifact id (path manifest.json) |
+| A08 shape | dtype or shape differ from I2.1; exponents.json is not canonical JSON (detail "exponents.json not parseable") |
 | A09 weight-range | a matrix entry outside -4095 .. 4095, or an Emb entry with absolute value 2^21 or more |
-| A10 kl-shape | KL.bin length is not 1,144 bytes |
-| A11 kl-shift | a shift below 1 or above 32; kq differs from kk while one is below 16 |
+| A10 kl-shape | KL.bin length is not 1,144 bytes (then A06 and A08 are not reported for KL.bin) |
+| A11 kl-shift | a shift below 1 or above its ceiling (contract 5.2, shift restrictions); kq differs from kk while one is below 16 |
 | A12 kl-norm | M outside 24 .. 47, K outside 17 .. 32, K < M - 14, or K > M (same for MF, KF) |
 | A13 kl-rp | rp is not 1 in some layer |
 | A14 kl-sh | sh differs between layers or is outside 4 .. 12 |
 | A15 params | a constant differs from I1; e_res outside 3 .. 14; an eps differs from floor((4096 4^e_res + 100000) / 200000) or is 0; s above 63 |
 | A16 table | a table file differs from its recipe (recomputed), or a digest differs from params.json |
+
+Notes on the codes (D13):
+
+- A07 also covers a caller supplied expected_id that differs from the manifest hash; it is reported on
+  manifest.json. The directory name must equal the artifact id (I2.2); a different name is refused under A07 on
+  manifest.json. The directory name rule is not yet enforced at 2a211c83 (W1 follow-up F1).
+- A10: when KL.bin has the wrong length, only A10 is reported for KL.bin; A06 and A08 are suppressed for that one
+  file so that the dedicated code is the one load_artifact raises. Accepted.
+- A08 also covers a malformed exponents.json (not canonical JSON). A01 stays for manifest.json only and A15 for
+  params.json only.
+- A11: the shift ceilings of contract section 5.2 apply (see the clarification there): for TL-INT-1 every shift
+  kq, kk, kv, ko, kg, ku, kd is in 1 .. 32. W1 follow-up F2 makes the check per shift and per class, with the
+  ceiling taken from the class's form, and W3 adds one test per shift.
+
+Non-normative, tests only: `validate_artifact` and `load_artifact` take a keyword `dims=` (default the full
+TinyLlama shape) so that tests can validate small synthetic artifacts. A real artifact is always validated with
+the default; no other caller may pass `dims=`.
 
 ### I2.5 Loader boundary (W1 writes, W2 and W3 read)
 
@@ -130,6 +153,11 @@ The reference emits, through `record(name, layer, values)`, the intermediates na
 
 All values are int64 (every recorded value fits, contract 3.1). The order of records is the table's order, layer by
 layer.
+
+Range check order (D11): the reported `range_failure` is the first failure in this fixed order. Layers in forward
+order (the final norm after layer 21). Within a layer, conditions are checked in the order of the contract's
+range-condition numbering (contract 3.2): 1, 2, 3, 4, 6, 7, 8. For one condition, positions ascending, then
+indices ascending. The first failing (condition, position, index) is reported and the reference stops.
 
 ### I3.2 Files
 
@@ -233,8 +261,8 @@ only; held-out windows and the prompt set are used for range validation (P4), no
 
 tinyllama.reference must export the primitives below at package level under exactly these names, with these
 positional arguments in this order. All integers are Python int (unbounded); lists are Python lists of int.
-Source: tests/tinyllama/arithmetic/test_reference_conformance.py (names and calling conventions) and
-tests/tinyllama/arithmetic/ref_independent.py (definitions). The test also accepts the alias in brackets, but W2
+Source: tests/tinyllama/arithmetic/tl_conformance.py (names and calling conventions, used by
+test_reference_conformance.py) and tests/tinyllama/arithmetic/tl_ref_independent.py (definitions). The test also accepts the alias in brackets, but W2
 should use the first name.
 
 | name [alias] | arguments in order | returns | vectors file, case key |
@@ -251,7 +279,6 @@ should use the first name.
 | norm [rms_norm] | x: list of int, m: int, k: int, eps: int | dict with vx, sigma, rc, w, nr (nr: list of int, compared to expected_nr) | norm.json, cases |
 | pad [pad_window] | ids: list of int | list of int of length 1024, right padded with id 0; ValueError if more than 1024 ids | padding.json, cases |
 
-Conformance test note: once tinyllama.reference exists, the conformance test must not skip. Today it skips the
-whole module when the import fails, skips a primitive when none of its names is found, and skips when no calling
-convention fits; a W2 primitive with a different name or argument order would therefore skip silently. The W3
-follow-up in work/TASKS.md makes these cases fail.
+Conformance test note: since 9b798da5 (W3), once tinyllama.reference imports, the conformance test fails, not
+skips, when an I7 primitive is missing (test_conformance_guard.py checks this with a fake module). It also checks
+a full-layer vector (vectors/layer.json) and a rotary multiply then rq vector (vectors/rotary_rq.json).
