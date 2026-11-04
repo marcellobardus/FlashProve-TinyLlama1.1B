@@ -82,6 +82,13 @@ Branch `feature/tinyllama-integer-audit` from main `9e2bdd8f`. Not pushed.
 - Not run: anything on real weights. Next step is the pod run, details in work/DECISIONS.md (integration round 3).
 - Not pushed. No draft PR yet.
 
+## 2026-11-04 artifact loader hardening (done)
+
+- Second review of tinyllama/artifacts.py (work/scratch/artifacts_review2.md): 1 blocker, several should-fix. W1 round 4 fixed them on feature/tinyllama-w1-hardening (03d746f5 T1.6a, 8a1bc871 T1.6b, 005cc44c T1.6c) and merged. D24: A16 checks digests only at load time.
+- Verified by me on the worktree: full suite 579 passed, 0 failed, 0 skipped (4:39). The loader no longer imports the float recipe. tests/tinyllama/reference/tiny_artifact.py was changed (it now builds its recipe tables itself because artifacts.py no longer exposes them), in scope as a test helper.
+- Unfixed nits 14 to 16 of the review (dead branch, sort tie rule, rename race) are optional.
+- Pod: start retries every 30 min fail (host out of vCPU or memory); first failure 16:54 Almaty. Marcello chose to keep retrying the same pod (no replacement).
+
 ## Blockers
 
 - Proof: verifier standard form requires NE > 0 (`routed-experts`); dense TinyLlama cannot reach `YES` without an agreed change. D1 resolved as option a: proof compatibility deferred (O1).
