@@ -120,6 +120,13 @@ base `9e2bdd8f` unless a path is under `work/scratch/` (git ignored probe files,
 - D23 (lead, 2026-11-04). `e_res` stays fixed at 11 (default) for the first pod run. An automatic search over
   3 to 14 is added only if P4 reports range failures.
 
+- D24 (lead, 2026-11-04). Second review of tinyllama/artifacts.py (finding 8). A16 at load time checks table file
+  digests against params.json and the tables_sha256 summary only. The loader does not recompute tables, which keeps
+  float out of the loader as D12 requires. The check "table file equals its float64 recipe" stays in tests and in
+  the converter (tinyllama/convert/tables.py), and in the pod run. INTERFACES.md I2.4 A16 text amended.
+- D25 (lead, 2026-11-04). Review findings 1 to 7, 9 to 13 and 17 of work/scratch/artifacts_review2.md are assigned to
+  W1 round 4 (T1.6), with tests for every sub-rule the review listed as untested. Finding 14 to 16: nits, optional.
+
 ## Open items
 
 - O1 (open, Marcello, deferred by D1). Proof compatibility of a dense TinyLlama. Needs at least: a dense

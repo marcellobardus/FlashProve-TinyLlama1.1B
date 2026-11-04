@@ -96,7 +96,7 @@ if any rule fails. Rejection codes (each needs a malformed-artifact test by W3):
 | A13 kl-rp | rp is not 1 in some layer |
 | A14 kl-sh | sh differs between layers or is outside 4 .. 12 |
 | A15 params | a constant differs from I1; e_res outside 3 .. 14; an eps differs from floor((4096 4^e_res + 100000) / 200000) or is 0; s above 63 |
-| A16 table | a table file differs from its recipe (recomputed), or a digest differs from params.json |
+| A16 table | a table file digest differs from params.json, or the tables_sha256 summary differs (D24: the loader does not recompute tables; the recipe check is a test and a pod check) |
 
 Notes on the codes (D13):
 
