@@ -134,6 +134,10 @@ def test_numpy_logits_matches_independent_hf_forward(tmp_path):
 
     result = checks.compare_logits(reference, actual)
     assert result["passed"], result
+    assert result["max_relative_difference"] <= checks.LOGIT_THRESHOLD
+    assert result["relative_difference_definition"] == (
+        "max|a-b| / max|a| over all positions"
+    )
 
 
 def test_identity_permutation_fails_the_logits_check(tmp_path, monkeypatch):

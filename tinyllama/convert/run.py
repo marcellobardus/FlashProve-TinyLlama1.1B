@@ -10,6 +10,9 @@
 # Add --skip-range-report to build and validate the artifact only.  It prints
 # the exact tinyllama.convert.range_report command to run next on stderr.
 #
+# The report covers --range-sets both by default, held-out windows first and
+# then fit windows.  Pass heldout or fit to report one set.
+#
 # Add --test-dims '{"L":2,"D":64,"H":4,"G":2,"DH":16,"F":128,"V":256,"T":32}'
 # and --manifest PATH only for the synthetic tests of this repository.
 
@@ -169,6 +172,8 @@ def _range_report_command(args, artifact_dir):
         shlex.quote(str(args.heldout)),
         "--checkpoint",
         shlex.quote(str(args.checkpoint)),
+        "--sets",
+        args.range_sets,
         "--workers",
         str(args.workers),
     ]
@@ -341,6 +346,13 @@ def main(argv=None):
         action="store_true",
         help="build and validate the artifact, then print the range report command",
     )
+    parser.add_argument(
+        "--range-sets",
+        choices=("heldout", "fit", "both"),
+        default="both",
+        metavar="SET",
+        help="range report sets: heldout, fit or both (default: both)",
+    )
     parser.add_argument("--test-dims", default=None, metavar="JSON")
     parser.add_argument("--manifest", default=None, metavar="PATH")
     args = parser.parse_args(argv)
@@ -445,16 +457,22 @@ def _run(args, argv):
         print(artifact_id)
         return 0
 
+    if args.range_sets == "both":
+        report_windows = {"heldout": heldout, "fit": calib}
+    elif args.range_sets == "fit":
+        report_windows = {"fit": calib}
+    else:
+        report_windows = {"heldout": heldout}
     report = range_report(
         artifact_dir,
-        heldout,
+        report_windows,
         dims=dims,
         float_model=model,
         workers=args.workers,
     )
     if report["range_failure_count"]:
         print(
-            "range report: {} held-out range failures".format(
+            "range report: {} range failures".format(
                 report["range_failure_count"]
             ),
             file=sys.stderr,

@@ -35,7 +35,8 @@ helpers, so importing this module stays numpy only.
 
 The relative difference used for the score arrays is
 max|a - b| / max|a|, where a is the HF score array and b is the neighbour pair
-score array.
+score array. The logits comparison uses the same ratio over all positions, and
+also requires the greedy token at the last position to agree.
 """
 
 import argparse
@@ -137,7 +138,11 @@ def compare_score_arrays(reference, candidate, threshold=SCORE_THRESHOLD):
 
 
 def compare_logits(reference, candidate, threshold=LOGIT_THRESHOLD):
-    """Compare full logits, including the greedy token at the last position."""
+    """Compare full logits with max|a-b| / max|a| over all positions.
+
+    The check passes when the relative difference is at most the threshold and
+    the greedy token at the last position is the same in both arrays.
+    """
     a = np.asarray(reference, dtype=np.float64)
     b = np.asarray(candidate, dtype=np.float64)
     if a.ndim != 2 or b.ndim != 2 or a.shape != b.shape:
@@ -145,10 +150,13 @@ def compare_logits(reference, candidate, threshold=LOGIT_THRESHOLD):
     difference = np.abs(a - b)
     max_all = float(np.max(difference)) if difference.size else 0.0
     max_last = float(np.max(difference[-1])) if difference.size else 0.0
+    measured = relative_difference(a, b)
     hf_token = int(np.argmax(a[-1]))
     numpy_token = int(np.argmax(b[-1]))
     same = hf_token == numpy_token
     return {
+        "relative_difference_definition": "max|a-b| / max|a| over all positions",
+        "max_relative_difference": _json_number(measured),
         "max_abs_difference": _json_number(max_all),
         "max_abs_difference_last": _json_number(max_last),
         "threshold": threshold,
@@ -156,7 +164,7 @@ def compare_logits(reference, candidate, threshold=LOGIT_THRESHOLD):
         "numpy_next_token": numpy_token,
         "same_next_token": bool(same),
         "last_position": int(a.shape[0] - 1),
-        "passed": bool(same and max_all < threshold),
+        "passed": bool(same and measured <= threshold),
     }
 
 

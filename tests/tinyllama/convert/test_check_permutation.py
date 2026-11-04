@@ -100,11 +100,79 @@ def test_compare_logits_reports_greedy_and_threshold():
     assert good["passed"]
     assert good["same_next_token"]
     assert good["hf_next_token"] == good["numpy_next_token"] == 1
+    expected = float(np.max(np.abs(candidate - reference)) / np.max(reference))
+    assert good["max_relative_difference"] == pytest.approx(expected)
+    assert good["relative_difference_definition"] == (
+        "max|a-b| / max|a| over all positions"
+    )
+    assert good["threshold"] == checks.LOGIT_THRESHOLD
 
     candidate[-1, 2] = 10.0
     bad = checks.compare_logits(reference, candidate)
     assert not bad["passed"]
     assert not bad["same_next_token"]
+
+
+def test_compare_logits_relative_just_below_threshold_passes():
+    reference = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float64)
+    candidate = reference.copy()
+    candidate[0, 1] = 0.0009
+
+    result = checks.compare_logits(reference, candidate)
+    assert result["max_relative_difference"] < checks.LOGIT_THRESHOLD
+    assert result["same_next_token"]
+    assert result["passed"]
+
+
+def test_compare_logits_relative_just_above_threshold_fails():
+    reference = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float64)
+    candidate = reference.copy()
+    candidate[0, 1] = 0.0011
+
+    result = checks.compare_logits(reference, candidate)
+    assert result["max_relative_difference"] > checks.LOGIT_THRESHOLD
+    assert result["same_next_token"]
+    assert not result["passed"]
+
+
+def test_compare_logits_relative_equal_to_threshold_passes():
+    reference = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float64)
+    candidate = reference.copy()
+    candidate[0, 1] = checks.LOGIT_THRESHOLD
+
+    result = checks.compare_logits(reference, candidate)
+    assert result["max_relative_difference"] == pytest.approx(
+        checks.LOGIT_THRESHOLD
+    )
+    assert result["same_next_token"]
+    assert result["passed"]
+
+
+def test_compare_logits_different_tokens_fail_even_when_relative_is_small():
+    reference = np.array([[1.0, 0.0, 0.0], [0.0, 0.001, 0.0009]], dtype=np.float64)
+    candidate = reference.copy()
+    candidate[-1] = np.array([0.0, 0.0009, 0.001], dtype=np.float64)
+
+    result = checks.compare_logits(reference, candidate)
+    assert result["max_relative_difference"] < checks.LOGIT_THRESHOLD
+    assert result["hf_next_token"] == 1
+    assert result["numpy_next_token"] == 2
+    assert not result["same_next_token"]
+    assert not result["passed"]
+
+
+def test_compare_logits_zero_reference_uses_relative_difference_rule():
+    reference = np.zeros((2, 3), dtype=np.float64)
+    equal = checks.compare_logits(reference, reference.copy())
+    assert equal["max_relative_difference"] == 0.0
+    assert equal["passed"]
+
+    candidate = reference.copy()
+    candidate[0, 0] = 1e-9
+    different = checks.compare_logits(reference, candidate)
+    assert different["max_relative_difference"] == "inf"
+    assert different["same_next_token"]
+    assert not different["passed"]
 
 
 def _write_checkpoint(root, tensors):
