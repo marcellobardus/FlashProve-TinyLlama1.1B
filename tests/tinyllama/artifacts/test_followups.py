@@ -32,11 +32,6 @@ F2_ACCEPTED_CASES = [
     pytest.param("kd", 32, synth.L - 1, id="kd-32-last-layer"),
 ]
 
-F1_REASON = (
-    "F1: directory name versus artifact id not enforced until W1 follow-up F1 "
-    "lands; remove this xfail then"
-)
-
 
 def _normalize(code):
     if isinstance(code, (tuple, list)):
@@ -83,8 +78,6 @@ def _artifact_id(directory):
     return synth.file_sha256(directory / "manifest.json")
 
 
-# To flip after F1: delete the xfail decorator; the test must then pass.
-@pytest.mark.xfail(strict=False, reason=F1_REASON)
 def test_f1_directory_not_named_by_artifact_id_is_rejected(artifact_copy, valid_artifact):
     directory = artifact_copy("not-" + _artifact_id(valid_artifact))
     assert directory.name != _artifact_id(directory)
