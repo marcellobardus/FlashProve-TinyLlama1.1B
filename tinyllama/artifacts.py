@@ -93,6 +93,19 @@ TABLE_PATHS = {
 }
 MATRIX_NAMES = ("wq", "wk", "wv", "wo", "wg", "wu", "wd")
 
+# Contract 5.2 / D16: for TL-INT-1 every shift has digit form 2, whose
+# ceiling is 32.  A proof profile that fixes forms must supply its own
+# per-class ceilings.
+SHIFT_CEILINGS = {
+    "kq": 32,
+    "kk": 32,
+    "kv": 32,
+    "ko": 32,
+    "kg": 32,
+    "ku": 32,
+    "kd": 32,
+}
+
 
 class ArtifactRejected(ValueError):
     """An artifact violates one of the I2.4 rules."""
@@ -430,15 +443,15 @@ def _kl_word_problems(kl, dims, params=None):
 
     for layer in range(dims.L):
         row = words[layer]
-        for index, name in enumerate(("kq", "kk", "kv", "ko", "kg", "ku", "kd")):
+        for index, (name, ceiling) in enumerate(SHIFT_CEILINGS.items()):
             value = int(row[index])
-            if value < 1 or value > 32:
+            if value < 1 or value > ceiling:
                 problems.append(
                     (
                         "A11",
                         "KL.bin",
-                        "layer %d %s is %d, outside 1 .. 32"
-                        % (layer, name, value),
+                        "layer %d %s is %d, outside 1 .. %d"
+                        % (layer, name, value, ceiling),
                     )
                 )
         kq, kk = int(row[0]), int(row[1])
@@ -792,17 +805,31 @@ def _content_failure(
     return failures
 
 
+def _directory_name_failure(directory, manifest_raw):
+    artifact_id = hashlib.sha256(manifest_raw).hexdigest()
+    name = os.path.basename(os.path.normpath(os.path.abspath(str(directory))))
+    if name != artifact_id:
+        return (
+            "A07",
+            "manifest.json",
+            "directory name {} differs from artifact id {}".format(
+                name, artifact_id
+            ),
+        )
+    return None
+
+
 def validate_artifact(directory, *, dims=FULL):
     """Return every I2.4 failure as a list of (code, path, detail) tuples."""
     directory = Path(directory)
     manifest_path = directory / "manifest.json"
 
     try:
-        raw = _read(manifest_path)
+        manifest_raw = _read(manifest_path)
     except OSError as exc:
         return [("A01", "manifest.json", "cannot read manifest: {}".format(exc))]
     try:
-        manifest = _parse_canonical_json(raw)
+        manifest = _parse_canonical_json(manifest_raw)
         if not isinstance(manifest, dict):
             raise _JSONProblem("manifest is not a JSON object")
     except _JSONProblem as exc:
@@ -1080,6 +1107,11 @@ def validate_artifact(directory, *, dims=FULL):
         for detail in _params_problems(params, dims):
             failures.append(("A15", "params.json", detail))
 
+    # I2.2/D13 (5): the directory name is the artifact id.
+    directory_failure = _directory_name_failure(directory, manifest_raw)
+    if directory_failure is not None:
+        failures.append(directory_failure)
+
     return _sort_failures(failures)
 
 
@@ -1209,7 +1241,19 @@ def load_artifact(directory, expected_id=None, *, dims=FULL):
     """Validate and load an artifact, with read only memory mapped arrays."""
     failures = validate_artifact(directory, dims=dims)
     if failures:
-        code, path, detail = _sort_failures(failures)[0]
+        # The directory-name rule reports A07 on manifest.json, so sorting
+        # would make it mask a content fault that used to be raised first.
+        # Keep the old code for an artifact that already has another failure.
+        directory_failure = None
+        try:
+            manifest_raw = _read(Path(directory) / "manifest.json")
+            directory_failure = _directory_name_failure(directory, manifest_raw)
+        except OSError:
+            pass
+        other_failures = [
+            failure for failure in failures if failure != directory_failure
+        ]
+        code, path, detail = _sort_failures(other_failures or failures)[0]
         raise ArtifactRejected(code, path, detail)
 
     directory = Path(directory)
