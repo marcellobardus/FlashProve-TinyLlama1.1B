@@ -63,6 +63,37 @@ base `9e2bdd8f` unless a path is under `work/scratch/` (git ignored probe files,
 - D10 (resolved, lead, answers to W1 questions). (1) Scaling by a power of two is exact in float32 unless it
   overflows. (2) A zero gamma is allowed: contract P2 says gamma is zero or within 2^-64 .. 2^64.
   (3) iter_tensors must require a manifest; None is not accepted (W1 follow-up in T1.4).
+- D11 (resolved, lead, W2 question 1). Range check order. The reference checks layers in forward order and, within
+  a layer, the conditions in the contract's numbering (ARITHMETIC_CONTRACT.md 3.2): 1, 2, 3, 4, 6, 7, 8; for one
+  condition positions ascending, then indices ascending; the first failure is reported. Text in INTERFACES.md I3.1.
+  Rationale: one reported failure must be the same in every implementation (Python reference, AMD C boundary), so
+  the hash traces' `range_failure` field compares exactly.
+- D12 (resolved, lead, W2 question 2). Tables in T2.2: the reference loads the four tables from the artifact and
+  checks their digests (A16 through load_artifact); the float64 recipe stays in tests and in the offline converter
+  only (tinyllama/convert/tables.py). tinyllama/reference/tables.py, which builds tables from the recipe, is for
+  tests only from now on. Rationale: the reference must use no float (contract section 12), and the artifact is the
+  single source of the tables the AMD workstream also reads.
+- D13 (resolved, lead, W1 round 2 questions; documented in INTERFACES.md I2.3 and I2.4). (1) A caller supplied
+  expected_id that differs stays A07 on manifest.json. (2) A KL.bin of wrong length reports only A10 (A06 and A08
+  suppressed for that file); accepted. (3) Strict spelling of the I1 constant names in params.json is accepted;
+  the exact list is in I2.3. (4) A malformed exponents.json reports A08. (5) The directory name must equal the
+  artifact id, refused under A07 on manifest.json; needs a small code change, W1 follow-up F1, plus a W3 test.
+  (6) A11 must also enforce the per-form shift ceilings of contract 5.2; the contract text did not say which form
+  applies, so a clarification was added (D16); W1 follow-up F2 plus a W3 test. Rationale: each answer keeps one
+  code per failure and matches what tinyllama/artifacts.py at 2a211c83 already does, except (5) and (6).
+- D14 (resolved, lead, W1 deviation). validate_artifact and load_artifact take a keyword `dims=` so tests can use
+  small synthetic artifacts. Accepted as test only and documented as non-normative in INTERFACES.md I2.4.
+  Rationale: full size artifacts are about 2.33 GB and cannot be built on the shared box.
+- D15 (resolved, lead, W3 question). The docs cite tests/tinyllama/arithmetic/tl_ref_independent.py and
+  tl_conformance.py (renamed in 9b798da5); INTERFACES.md I7 updated. The synthetic full size artifact used by the
+  malformed artifact tests has an apparent size of about 2.3 GB but is sparse and hard linked
+  (tests/tinyllama/artifacts/synth_artifact.py, `write_sparse`, `os.link`), about 2.8 MB real use as reported by
+  W3; accepted.
+- D16 (resolved, lead, contract clarification for D13 (6)). FlashProve's shift ceiling (16, 24 or 32) depends on
+  each class's digit form (verifier/docs/parameter-file.md:122, :125; cp_verify.cpp:1389-1391). A TL-INT-1
+  artifact states no digit form, so every shift kq, kk, kv, ko, kg, ku, kd has the form 2 ceiling 32 and is at
+  least 1. Added to ARITHMETIC_CONTRACT.md 5.2. A proof profile (O1) that fixes forms must check each class's
+  ceiling; a lower ceiling is a new contract id.
 - D9 (decided by brief). No edits to existing FlashProve sources on this branch; new code under tinyllama/ and
   tests/tinyllama/.
 

@@ -45,6 +45,26 @@ Branch `feature/tinyllama-integer-audit` from main `9e2bdd8f`. Not pushed.
 - Docs: contract section 6 column renamed to "sha256 of table words"; INTERFACES.md I7 added.
 - Next: W2 T2.1.
 
+## 2026-11-04 W1 round 2, W2, W3 round 2, integration (done)
+
+- W2 T2.1 (branch feature/tinyllama-w2-reference): c4a8a3dc integer primitives per INTERFACES.md I7; b6e1a874
+  integer layer. The conformance test passes on all 11 primitives. W2 reports that the reference uses no float.
+  Tables are built from the recipe in tinyllama/reference/tables.py; that file is for tests only from now on (D12).
+- W3 round 2 (branch feature/tinyllama-w3-artifact-tests): 9b798da5 conformance hardened (fails on a missing
+  primitive), full-layer vector and rotary multiply then rq vector; files renamed to tl_ref_independent.py and
+  tl_conformance.py. 01898036 malformed artifact tests A01 to A16 and a synthetic artifact helper (sparse, hard
+  linked; D15).
+- W1 round 2 (branch feature/tinyllama-w1-artifacts): 953c7dc4 iter_tensors requires a manifest, unknown dtype
+  refused; 2a211c83 tinyllama/artifacts.py writer, loader, validator and tinyllama/convert/tables.py.
+- Integration on feature/tinyllama-integer-audit: merges e510d8de (W1), 8a6dcda7 (W2), 74153128 (W3).
+  `python3 -m pytest tests/tinyllama -q` at 74153128 on the box: 377 passed in 122.76s, 0 skipped, so the
+  malformed artifact tests run against the real validator.
+- opencode notes: DeepSeek-V4.1-Flash for all of W1 round 2 (1 to 12 minutes per task), W2 (about 9 minutes)
+  and W3 round 2 (5 to 10 minutes).
+- Docs: decisions D11 to D16; INTERFACES.md range check order (I3.1), constant names (I2.3), code notes and
+  non-normative `dims=` (I2.4), I7 file names; contract 5.2 clarification of shift ceilings (D16).
+- Next: W2 T2.2; W1 follow-ups F1 and F2, then T1.3; T1.5 and the other pod checks.
+
 ## Blockers
 
 - Proof: verifier standard form requires NE > 0 (`routed-experts`); dense TinyLlama cannot reach `YES` without an agreed change. D1 resolved as option a: proof compatibility deferred (O1).
