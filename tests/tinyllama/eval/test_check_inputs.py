@@ -123,6 +123,20 @@ def independent_windows(
     return drawn, kept, windows
 
 
+def test_collect_versions_has_exact_keys_and_python_string():
+    versions = check_inputs.collect_versions()
+    assert set(versions) == {
+        "python",
+        "numpy",
+        "pyarrow",
+        "tokenizers",
+        "transformers",
+        "huggingface_hub",
+    }
+    assert isinstance(versions["python"], str)
+    assert versions["python"]
+
+
 def test_ids_sha256_matches_independent_struct_pack():
     ids = [1, 529, 29989, 1792, 32000]
     expected = hashlib.sha256(struct.pack("<%dI" % len(ids), *ids)).hexdigest()
@@ -236,6 +250,7 @@ def test_main_writes_report_and_returns_zero(monkeypatch, tmp_path):
     assert code == 0
     report = json.loads(out.read_text(encoding="utf-8"))
     assert report["ok"] is True
+    assert report["versions"] == check_inputs.collect_versions()
     assert report["prompts"]["ok"] is True
     assert report["prompts"]["results"][0]["ids2"]["informational_only"] is True
     assert report["calibration"] == {"skipped": True}
@@ -256,6 +271,7 @@ def test_main_returns_one_on_prompt_mismatch(monkeypatch, tmp_path):
     assert code == 1
     report = json.loads(out.read_text(encoding="utf-8"))
     assert report["ok"] is False
+    assert report["versions"] == check_inputs.collect_versions()
     assert report["prompts"]["ok"] is False
     assert report["prompts"]["results"][0]["first_diff"] == 3
 

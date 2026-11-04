@@ -1,6 +1,18 @@
 """Check the TinyLlama prompt set and the TL-CAL-1 calibration inputs.
 
-Pod command (run from the repository root)::
+Transformers must be a 4.x release (decision D29, open item O6).  Install one
+before running the checks (run from the repository root)::
+
+    python3 -m pip install "transformers>=4.40,<5"
+
+Then the prompt-only check (P5)::
+
+    python3 tests/tinyllama/eval/check_inputs.py \
+        --checkpoint-dir DIR_OR_REPO \
+        --out report.json \
+        --skip-calibration
+
+The full check, including TL-CAL-1::
 
     python3 tests/tinyllama/eval/check_inputs.py \
         --checkpoint-dir DIR_OR_REPO \
@@ -15,19 +27,30 @@ Optional arguments::
     --skip-prompts       check only the calibration set (TL-CAL-1)
 
 Requirements on the pod: Python 3.13 (or a version whose random.Random and
-numpy.lib.format agree with it), numpy, pyarrow, tokenizers and transformers,
-plus a local checkpoint snapshot in DIR_OR_REPO.  If DIR_OR_REPO is a Hugging
-Face repo id instead of a directory, transformers and huggingface_hub fetch the
-pinned files; this program itself never downloads anything.  The imports of
-transformers, tokenizers, pyarrow and huggingface_hub are lazy, so the module
-can be imported on a machine that has only numpy and pytest.
+numpy.lib.format agree with it), numpy, pyarrow, tokenizers and a transformers
+4.x release, plus a local checkpoint snapshot in DIR_OR_REPO.  The exact
+installed versions of python, numpy, pyarrow, tokenizers, transformers and
+huggingface_hub are printed in the report's "versions" field.  If DIR_OR_REPO is
+a Hugging Face repo id instead of a directory, transformers and huggingface_hub
+fetch the pinned files; this program itself never downloads anything.  The
+imports of transformers, tokenizers, pyarrow and huggingface_hub are lazy, so
+the module can be imported on a machine that has only numpy and pytest.
 
 The prompt check (P5) reads docs/tinyllama/prompts_v1.json and the pinned
 revision from docs/tinyllama/checkpoint_manifest.json.  For every prompt it
-renders the messages with the pinned chat template, tokenizes the rendered text
-with add_special_tokens=True, and compares text, text sha256, ids, ids sha256
-(uint32 little endian) and length with the committed values.  It also checks
-the JSON's internal hashes without using a tokenizer.
+renders the messages with the pinned chat template and reports two independent
+id lists, each compared with the committed ids and sha256 with first_difference:
+
+    ids_tokenizers_lib  the tokenizers library on tokenizer.json, using
+                        encode(text, add_special_tokens=True), the way the
+                        committed ids were made
+    ids_transformers    transformers.AutoTokenizer on the same rendered text
+
+ok is false if either list differs.  With transformers 5.x a different
+transformers id list can appear (observed: P0 with 23 ids, id 29871 missing at
+index 15).  Neither list is claimed to be the right one here.  The check also
+compares text, text sha256 and length with the committed values, and checks the
+JSON's internal hashes without using a tokenizer.
 
 The calibration check follows docs/tinyllama/INTERFACES.md I4.3 (D8): join the
 parquet "text" column with two line feeds, encode once with the checkpoint's
@@ -45,6 +68,7 @@ import hashlib
 import io
 import json
 import os
+import platform
 import random
 import struct
 import sys
@@ -75,6 +99,32 @@ CALIBRATION_EXPECTED = {
     "parquet_size": 6_357_543,
     "parquet_sha256": "e83889baabc497075506f91975be5fac0d45c5290b6b20582c8cd1e853d0c9f7",
 }
+
+
+def collect_versions():
+    """Return the Python and package versions used for the checks."""
+    versions = {"python": platform.python_version()}
+    try:
+        from importlib import metadata
+    except Exception:
+        metadata = None
+    for name in (
+        "numpy",
+        "pyarrow",
+        "tokenizers",
+        "transformers",
+        "huggingface_hub",
+    ):
+        if metadata is None:
+            versions[name] = None
+            continue
+        try:
+            versions[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            versions[name] = None
+        except Exception:
+            versions[name] = None
+    return versions
 
 
 def sha256_file(path):
@@ -665,6 +715,7 @@ def main(argv=None):
         "prompt_set": "TL-PROMPTS-1",
         "checkpoint": args.checkpoint_dir,
         "revision": revision,
+        "versions": collect_versions(),
     }
     sections = []
 
