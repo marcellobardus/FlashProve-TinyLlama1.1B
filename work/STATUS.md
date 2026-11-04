@@ -65,6 +65,17 @@ Branch `feature/tinyllama-integer-audit` from main `9e2bdd8f`. Not pushed.
   non-normative `dims=` (I2.4), I7 file names; contract 5.2 clarification of shift ceilings (D16).
 - Next: W2 T2.2; W1 follow-ups F1 and F2, then T1.3; T1.5 and the other pod checks.
 
+## 2026-11-04 W2 T2.2 (done on the W2 branch, not yet merged)
+
+- W2 T2.2 (branch feature/tinyllama-w2-model): c8e1f2e8 full model forward and argmax; d7f62c58 run command and
+  hash trace; 269e2823 pod-only full-dimension layer timing script (bench_layer). W2 reports 388 passed on the W2
+  branch. Not yet merged into feature/tinyllama-integer-audit.
+- Docs: D17 (range check order is the compute order, INTERFACES.md I3.1); I3.2 record count fixed to 469.
+- Open performance item: numpy int64 matmul has no BLAS, so window mode at 1024 positions at full size may take
+  hours, and first_choice is a Python loop. P0 prefix mode (24 positions) is the milestone and is expected to be
+  fine. Measure with bench_layer on the pod. Follow-up T2.4 only if the measurements show a need.
+- Next: merge W2 T2.2 into the integration branch; bench_layer on the pod; W1 follow-ups F1 and F2, then T1.3.
+
 ## Blockers
 
 - Proof: verifier standard form requires NE > 0 (`routed-experts`); dense TinyLlama cannot reach `YES` without an agreed change. D1 resolved as option a: proof compatibility deferred (O1).
