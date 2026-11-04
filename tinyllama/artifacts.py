@@ -792,17 +792,31 @@ def _content_failure(
     return failures
 
 
+def _directory_name_failure(directory, manifest_raw):
+    artifact_id = hashlib.sha256(manifest_raw).hexdigest()
+    name = os.path.basename(os.path.normpath(os.path.abspath(str(directory))))
+    if name != artifact_id:
+        return (
+            "A07",
+            "manifest.json",
+            "directory name {} differs from artifact id {}".format(
+                name, artifact_id
+            ),
+        )
+    return None
+
+
 def validate_artifact(directory, *, dims=FULL):
     """Return every I2.4 failure as a list of (code, path, detail) tuples."""
     directory = Path(directory)
     manifest_path = directory / "manifest.json"
 
     try:
-        raw = _read(manifest_path)
+        manifest_raw = _read(manifest_path)
     except OSError as exc:
         return [("A01", "manifest.json", "cannot read manifest: {}".format(exc))]
     try:
-        manifest = _parse_canonical_json(raw)
+        manifest = _parse_canonical_json(manifest_raw)
         if not isinstance(manifest, dict):
             raise _JSONProblem("manifest is not a JSON object")
     except _JSONProblem as exc:
@@ -1080,6 +1094,11 @@ def validate_artifact(directory, *, dims=FULL):
         for detail in _params_problems(params, dims):
             failures.append(("A15", "params.json", detail))
 
+    # I2.2/D13 (5): the directory name is the artifact id.
+    directory_failure = _directory_name_failure(directory, manifest_raw)
+    if directory_failure is not None:
+        failures.append(directory_failure)
+
     return _sort_failures(failures)
 
 
@@ -1209,7 +1228,19 @@ def load_artifact(directory, expected_id=None, *, dims=FULL):
     """Validate and load an artifact, with read only memory mapped arrays."""
     failures = validate_artifact(directory, dims=dims)
     if failures:
-        code, path, detail = _sort_failures(failures)[0]
+        # The directory-name rule reports A07 on manifest.json, so sorting
+        # would make it mask a content fault that used to be raised first.
+        # Keep the old code for an artifact that already has another failure.
+        directory_failure = None
+        try:
+            manifest_raw = _read(Path(directory) / "manifest.json")
+            directory_failure = _directory_name_failure(directory, manifest_raw)
+        except OSError:
+            pass
+        other_failures = [
+            failure for failure in failures if failure != directory_failure
+        ]
+        code, path, detail = _sort_failures(other_failures or failures)[0]
         raise ArtifactRejected(code, path, detail)
 
     directory = Path(directory)

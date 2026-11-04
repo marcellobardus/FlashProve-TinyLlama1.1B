@@ -219,8 +219,8 @@ def artifact(tmp_path):
     }
 
 
-def _copy(artifact, tmp_path, name="mutated"):
-    destination = tmp_path / name
+def _copy(artifact, tmp_path, name=None):
+    destination = tmp_path / (name or artifact["id"])
     shutil.copytree(artifact["dir"], destination)
     return destination
 
@@ -453,6 +453,27 @@ def test_a07_flipped_byte(artifact, tmp_path):
     raw[0] ^= 1
     target.write_bytes(bytes(raw))
     _assert_code(path, "A07")
+
+
+def test_a07_directory_name_differs(artifact, tmp_path):
+    path = _copy(artifact, tmp_path, name="renamed-artifact")
+    failures = validate_artifact(path, dims=DIMS)
+    assert any(
+        code == "A07" and failure_path == "manifest.json"
+        for code, failure_path, _ in failures
+    ), failures
+    with pytest.raises(ArtifactRejected) as caught:
+        load_artifact(path, dims=DIMS)
+    assert caught.value.code == "A07"
+    assert caught.value.path == "manifest.json"
+
+
+def test_a07_directory_name_matches_artifact_id(artifact, tmp_path):
+    assert artifact["dir"].name == artifact["id"]
+    path = _copy(artifact, tmp_path)
+    assert path.name == artifact["id"]
+    assert validate_artifact(path, dims=DIMS) == []
+    load_artifact(path, dims=DIMS)
 
 
 # A08 -----------------------------------------------------------------------
