@@ -154,10 +154,15 @@ The reference emits, through `record(name, layer, values)`, the intermediates na
 All values are int64 (every recorded value fits, contract 3.1). The order of records is the table's order, layer by
 layer.
 
-Range check order (D11): the reported `range_failure` is the first failure in this fixed order. Layers in forward
-order (the final norm after layer 21). Within a layer, conditions are checked in the order of the contract's
-range-condition numbering (contract 3.2): 1, 2, 3, 4, 6, 7, 8. For one condition, positions ascending, then
-indices ascending. The first failing (condition, position, index) is reported and the reference stops.
+Range check order (D17, which replaces the condition-number order of D11): the reported `range_failure` is the
+first failure in the reference's compute order, which is the order of the steps in contract section 9 (layers in
+forward order), then the final norm of contract section 10 after layer 21. Within layer l the checks run in this
+order: condition 8 on x (first norm input), condition 1 on a_sigma (vx + eps1), condition 2 on a_w, condition 3 on
+qw, condition 3 on kw, condition 4 on vw, condition 8 on x_mid (second norm input), condition 1 on m_sigma
+(vx + eps2), condition 2 on m_w, condition 6 on gh, condition 7 on u. The final norm then checks condition 8 on
+x_last, condition 1 on aF_sigma, condition 2 on aF_w, reported with layer 22. Within one check, positions ascending,
+then indices ascending (index 0 for per-position values). The first failing (condition, layer, position, index) is
+reported and the reference stops; the failing run has no valid trace.
 
 ### I3.2 Files
 

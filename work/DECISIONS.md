@@ -63,8 +63,8 @@ base `9e2bdd8f` unless a path is under `work/scratch/` (git ignored probe files,
 - D10 (resolved, lead, answers to W1 questions). (1) Scaling by a power of two is exact in float32 unless it
   overflows. (2) A zero gamma is allowed: contract P2 says gamma is zero or within 2^-64 .. 2^64.
   (3) iter_tensors must require a manifest; None is not accepted (W1 follow-up in T1.4).
-- D11 (resolved, lead, W2 question 1). Range check order. The reference checks layers in forward order and, within
-  a layer, the conditions in the contract's numbering (ARITHMETIC_CONTRACT.md 3.2): 1, 2, 3, 4, 6, 7, 8; for one
+- D11 (resolved, lead, W2 question 1; superseded in part by D17: the check order). Range check order.
+  The reference checks layers in forward order and, within a layer, the conditions in the contract's numbering (ARITHMETIC_CONTRACT.md 3.2): 1, 2, 3, 4, 6, 7, 8; for one
   condition positions ascending, then indices ascending; the first failure is reported. Text in INTERFACES.md I3.1.
   Rationale: one reported failure must be the same in every implementation (Python reference, AMD C boundary), so
   the hash traces' `range_failure` field compares exactly.
@@ -96,6 +96,15 @@ base `9e2bdd8f` unless a path is under `work/scratch/` (git ignored probe files,
   ceiling; a lower ceiling is a new contract id.
 - D9 (decided by brief). No edits to existing FlashProve sources on this branch; new code under tinyllama/ and
   tests/tinyllama/.
+- D17 (resolved, lead, W2 report). Range check order is the compute order. The reported `range_failure` is the
+  first failure in the reference's compute order: the steps of ARITHMETIC_CONTRACT.md section 9 for layers 0 to 21
+  in forward order, then the final norm of section 10. Per layer: 8 on x, 1 on a_sigma, 2 on a_w, 3 on qw, 3 on kw,
+  4 on vw, 8 on x_mid, 1 on m_sigma, 2 on m_w, 6 on gh, 7 on u; final norm: 8 on x_last, 1 on aF_sigma, 2 on aF_w
+  (layer 22). Within one check positions ascending, then indices ascending. This withdraws the condition-number
+  order of D11 (tinyllama/reference/layer.py `_norm_rows` and `layer` already check in this order; the W2 report
+  says test T2.1 locks it). Text in INTERFACES.md I3.1. Rationale: a failing run aborts and carries no valid trace,
+  so only the identity (condition, layer, position, index) matters, and a compute-order definition is the one a
+  backend can follow without computing past a failure.
 
 ## Open items
 
