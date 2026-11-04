@@ -2,6 +2,7 @@ import hashlib
 import json
 import random
 import struct
+from collections import UserDict
 
 import numpy as np
 
@@ -30,22 +31,66 @@ def small_prompt_document():
     }
 
 
+class FakeEncoding:
+    def __init__(self, ids):
+        self.ids = list(ids)
+
+
+class FakeLibTokenizer:
+    def __init__(self, ids_by_text):
+        self.ids_by_text = dict(ids_by_text)
+
+    def encode(self, text, add_special_tokens=True):
+        assert add_special_tokens is True
+        return FakeEncoding(self.ids_by_text[text])
+
+
+class FakeBatchEncoding(UserDict):
+    pass
+
+
 class FakeTokenizer:
-    def __init__(self, text, ids):
+    def __init__(self, text, ids, tokenize_returns_dict=False):
         self.text = text
         self.ids = list(ids)
+        self.tokenize_returns_dict = tokenize_returns_dict
 
     def apply_chat_template(
         self, messages, tokenize=False, add_generation_prompt=True
     ):
         assert add_generation_prompt is True
         if tokenize:
+            if self.tokenize_returns_dict:
+                return FakeBatchEncoding({"input_ids": list(self.ids)})
             return list(self.ids)
         return self.text
 
     def __call__(self, text, add_special_tokens=True):
         assert add_special_tokens is True
-        return {"input_ids": list(self.ids)}
+        return FakeBatchEncoding({"input_ids": list(self.ids)})
+
+
+class FakeTransformersTokenizer:
+    def __init__(self, text_by_messages, ids_by_text):
+        self.text_by_messages = dict(text_by_messages)
+        self.ids_by_text = dict(ids_by_text)
+
+    @staticmethod
+    def _key(messages):
+        return json.dumps(messages, sort_keys=True)
+
+    def apply_chat_template(
+        self, messages, tokenize=False, add_generation_prompt=True
+    ):
+        assert add_generation_prompt is True
+        text = self.text_by_messages[self._key(messages)]
+        if tokenize:
+            return FakeBatchEncoding({"input_ids": list(self.ids_by_text[text])})
+        return text
+
+    def __call__(self, text, add_special_tokens=True):
+        assert add_special_tokens is True
+        return FakeBatchEncoding({"input_ids": list(self.ids_by_text[text])})
 
 
 def independent_windows(
@@ -76,6 +121,20 @@ def independent_windows(
         for index in range(num_windows)
     ]
     return drawn, kept, windows
+
+
+def test_collect_versions_has_exact_keys_and_python_string():
+    versions = check_inputs.collect_versions()
+    assert set(versions) == {
+        "python",
+        "numpy",
+        "pyarrow",
+        "tokenizers",
+        "transformers",
+        "huggingface_hub",
+    }
+    assert isinstance(versions["python"], str)
+    assert versions["python"]
 
 
 def test_ids_sha256_matches_independent_struct_pack():
@@ -165,10 +224,18 @@ def test_prompts_v1_json_is_internally_consistent():
     assert all(record["ok"] for record in result["prompts"])
 
 
-def _monkeypatch_small_inputs(monkeypatch, document, tokenizer):
+def _monkeypatch_small_inputs(monkeypatch, document, tokenizer, lib_tokenizer=None):
+    if lib_tokenizer is None:
+        lib_tokenizer = FakeLibTokenizer({tokenizer.text: tokenizer.ids})
     monkeypatch.setattr(check_inputs, "load_manifest", lambda *a, **k: {"revision": "rev"})
     monkeypatch.setattr(check_inputs, "load_prompt_set", lambda *a, **k: document)
     monkeypatch.setattr(check_inputs, "load_tokenizer", lambda *a, **k: tokenizer)
+    monkeypatch.setattr(
+        check_inputs, "resolve_tokenizer_json", lambda *a, **k: "tokenizer.json"
+    )
+    monkeypatch.setattr(
+        check_inputs, "load_calibration_tokenizer", lambda *a, **k: lib_tokenizer
+    )
 
 
 def test_main_writes_report_and_returns_zero(monkeypatch, tmp_path):
@@ -183,6 +250,7 @@ def test_main_writes_report_and_returns_zero(monkeypatch, tmp_path):
     assert code == 0
     report = json.loads(out.read_text(encoding="utf-8"))
     assert report["ok"] is True
+    assert report["versions"] == check_inputs.collect_versions()
     assert report["prompts"]["ok"] is True
     assert report["prompts"]["results"][0]["ids2"]["informational_only"] is True
     assert report["calibration"] == {"skipped": True}
@@ -194,7 +262,8 @@ def test_main_returns_one_on_prompt_mismatch(monkeypatch, tmp_path):
     altered = list(record["token_ids"])
     altered[3] = (altered[3] + 1) % 32000
     tokenizer = FakeTokenizer(record["text"], altered)
-    _monkeypatch_small_inputs(monkeypatch, document, tokenizer)
+    lib_tokenizer = FakeLibTokenizer({record["text"]: record["token_ids"]})
+    _monkeypatch_small_inputs(monkeypatch, document, tokenizer, lib_tokenizer)
     out = tmp_path / "report.json"
     code = check_inputs.main(
         ["--checkpoint-dir", "fake", "--out", str(out), "--skip-calibration"]
@@ -202,5 +271,75 @@ def test_main_returns_one_on_prompt_mismatch(monkeypatch, tmp_path):
     assert code == 1
     report = json.loads(out.read_text(encoding="utf-8"))
     assert report["ok"] is False
+    assert report["versions"] == check_inputs.collect_versions()
     assert report["prompts"]["ok"] is False
     assert report["prompts"]["results"][0]["first_diff"] == 3
+
+
+def test_check_prompts_ids2_from_dict_batch_encoding():
+    document = small_prompt_document()
+    record = document["prompts"][0]
+    tokenizer = FakeTokenizer(
+        record["text"], record["token_ids"], tokenize_returns_dict=True
+    )
+    lib_tokenizer = FakeLibTokenizer({record["text"]: record["token_ids"]})
+    report = check_inputs.check_prompts(tokenizer, document, lib_tokenizer)
+    result = report["results"][0]
+    assert "error" not in result["ids2"]
+    assert result["ids2"]["ids"] == record["token_ids"]
+    assert result["ids2"]["matches_committed_ids"] is True
+    assert result["ids2"]["informational_only"] is True
+    assert result["ok"] is True
+
+
+def test_real_prompts_report_transformers_drops_29871(monkeypatch, tmp_path):
+    document = check_inputs.load_prompt_set()
+    text_by_messages = {
+        json.dumps(record["messages"], sort_keys=True): record["text"]
+        for record in document["prompts"]
+    }
+    committed = {record["text"]: record["token_ids"] for record in document["prompts"]}
+    transformers_ids = {text: list(ids) for text, ids in committed.items()}
+
+    p0 = next(record for record in document["prompts"] if record["id"] == "P0")
+    dropped = list(p0["token_ids"])
+    assert dropped[15] == 29871
+    del dropped[15]
+    transformers_ids[p0["text"]] = dropped
+
+    tokenizer = FakeTransformersTokenizer(text_by_messages, transformers_ids)
+    lib_tokenizer = FakeLibTokenizer(committed)
+
+    monkeypatch.setattr(
+        check_inputs, "load_manifest", lambda *a, **k: {"revision": "rev"}
+    )
+    monkeypatch.setattr(check_inputs, "load_tokenizer", lambda *a, **k: tokenizer)
+    monkeypatch.setattr(
+        check_inputs, "resolve_tokenizer_json", lambda *a, **k: "tokenizer.json"
+    )
+    monkeypatch.setattr(
+        check_inputs, "load_calibration_tokenizer", lambda *a, **k: lib_tokenizer
+    )
+    monkeypatch.setattr(check_inputs, "load_prompt_set", lambda *a, **k: document)
+
+    report = check_inputs.check_prompts(tokenizer, document, lib_tokenizer)
+    result = next(item for item in report["results"] if item["id"] == "P0")
+    assert result["ids_transformers"]["first_difference"] == 15
+    assert result["ids_transformers"]["recorded_id_at_first_difference"] == 29871
+    assert result["ids_transformers"]["got_id_at_first_difference"] == 13
+    assert result["ids_tokenizers_lib"]["ok"] is True
+    assert result["ok"] is False
+    assert report["ok"] is False
+
+    out = tmp_path / "report.json"
+    code = check_inputs.main(
+        ["--checkpoint-dir", "fake", "--out", str(out), "--skip-calibration"]
+    )
+    assert code == 1
+    main_report = json.loads(out.read_text(encoding="utf-8"))
+    main_result = next(
+        item for item in main_report["prompts"]["results"] if item["id"] == "P0"
+    )
+    assert main_result["ids_transformers"]["first_difference"] == 15
+    assert main_result["ids_transformers"]["ok"] is False
+    assert main_report["ok"] is False

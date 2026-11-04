@@ -1,6 +1,18 @@
 """Check the TinyLlama prompt set and the TL-CAL-1 calibration inputs.
 
-Pod command (run from the repository root)::
+Transformers must be a 4.x release (decision D29, open item O6).  Install one
+before running the checks (run from the repository root)::
+
+    python3 -m pip install "transformers>=4.40,<5"
+
+Then the prompt-only check (P5)::
+
+    python3 tests/tinyllama/eval/check_inputs.py \
+        --checkpoint-dir DIR_OR_REPO \
+        --out report.json \
+        --skip-calibration
+
+The full check, including TL-CAL-1::
 
     python3 tests/tinyllama/eval/check_inputs.py \
         --checkpoint-dir DIR_OR_REPO \
@@ -15,19 +27,30 @@ Optional arguments::
     --skip-prompts       check only the calibration set (TL-CAL-1)
 
 Requirements on the pod: Python 3.13 (or a version whose random.Random and
-numpy.lib.format agree with it), numpy, pyarrow, tokenizers and transformers,
-plus a local checkpoint snapshot in DIR_OR_REPO.  If DIR_OR_REPO is a Hugging
-Face repo id instead of a directory, transformers and huggingface_hub fetch the
-pinned files; this program itself never downloads anything.  The imports of
-transformers, tokenizers, pyarrow and huggingface_hub are lazy, so the module
-can be imported on a machine that has only numpy and pytest.
+numpy.lib.format agree with it), numpy, pyarrow, tokenizers and a transformers
+4.x release, plus a local checkpoint snapshot in DIR_OR_REPO.  The exact
+installed versions of python, numpy, pyarrow, tokenizers, transformers and
+huggingface_hub are printed in the report's "versions" field.  If DIR_OR_REPO is
+a Hugging Face repo id instead of a directory, transformers and huggingface_hub
+fetch the pinned files; this program itself never downloads anything.  The
+imports of transformers, tokenizers, pyarrow and huggingface_hub are lazy, so
+the module can be imported on a machine that has only numpy and pytest.
 
 The prompt check (P5) reads docs/tinyllama/prompts_v1.json and the pinned
 revision from docs/tinyllama/checkpoint_manifest.json.  For every prompt it
-renders the messages with the pinned chat template, tokenizes the rendered text
-with add_special_tokens=True, and compares text, text sha256, ids, ids sha256
-(uint32 little endian) and length with the committed values.  It also checks
-the JSON's internal hashes without using a tokenizer.
+renders the messages with the pinned chat template and reports two independent
+id lists, each compared with the committed ids and sha256 with first_difference:
+
+    ids_tokenizers_lib  the tokenizers library on tokenizer.json, using
+                        encode(text, add_special_tokens=True), the way the
+                        committed ids were made
+    ids_transformers    transformers.AutoTokenizer on the same rendered text
+
+ok is false if either list differs.  With transformers 5.x a different
+transformers id list can appear (observed: P0 with 23 ids, id 29871 missing at
+index 15).  Neither list is claimed to be the right one here.  The check also
+compares text, text sha256 and length with the committed values, and checks the
+JSON's internal hashes without using a tokenizer.
 
 The calibration check follows docs/tinyllama/INTERFACES.md I4.3 (D8): join the
 parquet "text" column with two line feeds, encode once with the checkpoint's
@@ -45,9 +68,11 @@ import hashlib
 import io
 import json
 import os
+import platform
 import random
 import struct
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 import numpy as np
@@ -74,6 +99,32 @@ CALIBRATION_EXPECTED = {
     "parquet_size": 6_357_543,
     "parquet_sha256": "e83889baabc497075506f91975be5fac0d45c5290b6b20582c8cd1e853d0c9f7",
 }
+
+
+def collect_versions():
+    """Return the Python and package versions used for the checks."""
+    versions = {"python": platform.python_version()}
+    try:
+        from importlib import metadata
+    except Exception:
+        metadata = None
+    for name in (
+        "numpy",
+        "pyarrow",
+        "tokenizers",
+        "transformers",
+        "huggingface_hub",
+    ):
+        if metadata is None:
+            versions[name] = None
+            continue
+        try:
+            versions[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            versions[name] = None
+        except Exception:
+            versions[name] = None
+    return versions
 
 
 def sha256_file(path):
@@ -116,6 +167,112 @@ def first_difference(actual, expected):
     return None
 
 
+_MISSING = object()
+
+
+def _ids_from_mapping(value):
+    """Return value["input_ids"] for a Mapping or a keys()/[key] object."""
+    if isinstance(value, Mapping):
+        if "input_ids" not in value:
+            raise ValueError(
+                "mapping has no 'input_ids' key: %r" % (type(value).__name__,)
+            )
+        return value["input_ids"]
+    try:
+        contains = "input_ids" in value.keys()
+    except Exception:
+        contains = False
+    if not contains:
+        return _MISSING
+    try:
+        return value["input_ids"]
+    except Exception as error:
+        raise ValueError(
+            "cannot read 'input_ids' from %s: %s"
+            % (type(value).__name__, error)
+        ) from error
+
+
+def _normalize_sequence(sequence):
+    """Flatten one row of a list or tuple, or a single-row batch, to ints."""
+    if len(sequence) == 0:
+        return []
+    first = sequence[0]
+    if isinstance(first, (list, tuple)):
+        rows = []
+        for row in sequence:
+            if not isinstance(row, (list, tuple)):
+                raise ValueError(
+                    "expected a flat list of ids or a single batch row, got a "
+                    "mixed sequence"
+                )
+            rows.append(_normalize_sequence(row))
+        if len(rows) != 1:
+            raise ValueError(
+                "expected a single batch row, got %d rows" % len(rows)
+            )
+        return rows[0]
+    ids = []
+    for item in sequence:
+        if isinstance(item, (list, tuple, str, bytes)):
+            raise ValueError(
+                "expected integer ids, got %s" % (type(item).__name__,)
+            )
+        try:
+            ids.append(int(item))
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                "expected integer ids, got %r" % (item,)
+            ) from error
+    return ids
+
+
+def normalize_ids(value):
+    """Return a flat list of Python ints from a tokenizer's ids container.
+
+    Accepted shapes are a list or tuple of ints, a single-row nested list such
+    as [[...]], a Mapping or BatchEncoding-like object with an "input_ids" key,
+    an object with an "input_ids" attribute, an object with an ".ids" attribute
+    (tokenizers Encoding), and an object with ".tolist()" (numpy array or tensor,
+    including shape (1, n)).  A batch of more than one row and unknown types,
+    including str, raise ValueError.
+    """
+    seen = set()
+    while True:
+        if isinstance(value, str):
+            raise ValueError("cannot normalize ids from str: %r" % (value,))
+        if isinstance(value, (list, tuple)):
+            return _normalize_sequence(value)
+        if id(value) in seen:
+            raise ValueError("cannot normalize ids from %s" % type(value).__name__)
+        seen.add(id(value))
+
+        if isinstance(value, Mapping) or callable(getattr(value, "keys", None)):
+            extracted = _ids_from_mapping(value)
+            if extracted is not _MISSING:
+                value = extracted
+                continue
+
+        attribute = getattr(value, "input_ids", _MISSING)
+        if attribute is not _MISSING and not callable(attribute):
+            value = attribute
+            continue
+
+        attribute = getattr(value, "ids", _MISSING)
+        if attribute is not _MISSING and not callable(attribute):
+            value = attribute
+            continue
+
+        tolist = getattr(value, "tolist", None)
+        if callable(tolist):
+            value = tolist()
+            continue
+
+        raise ValueError(
+            "cannot normalize ids from %s" % (type(value).__name__,)
+        )
+
+
 def compare_prompt(record, text, ids):
     """Compare one rendered prompt and its ids with a prompts_v1.json record."""
     ids = [int(value) for value in ids]
@@ -155,6 +312,51 @@ def compare_prompt(record, text, ids):
         result["recorded_ids"] = recorded_ids
         result["expected_ids"] = recorded_ids
     return result
+
+
+def ids_subreport(record, ids=None, error=None):
+    """Compare one ids source with a prompt record and return its sub-report."""
+    recorded_ids = [int(value) for value in record["token_ids"]]
+    if error is not None:
+        return {
+            "ids": None,
+            "n": None,
+            "n_recorded": record["n"],
+            "sha256_u32le": None,
+            "sha256_recorded": record["token_ids_sha256_u32le"],
+            "sha256_match": False,
+            "ids_match": False,
+            "first_difference": None,
+            "got_id_at_first_difference": None,
+            "recorded_id_at_first_difference": None,
+            "ok": False,
+            "error": error,
+        }
+    ids = [int(value) for value in ids]
+    got_sha = ids_sha256_u32le(ids)
+    difference = first_difference(ids, recorded_ids)
+    got_id = None
+    recorded_id = None
+    if difference is not None:
+        if difference < len(ids):
+            got_id = ids[difference]
+        if difference < len(recorded_ids):
+            recorded_id = recorded_ids[difference]
+    ids_match = ids == recorded_ids
+    sha_match = got_sha == record["token_ids_sha256_u32le"]
+    return {
+        "ids": ids,
+        "n": len(ids),
+        "n_recorded": record["n"],
+        "sha256_u32le": got_sha,
+        "sha256_recorded": record["token_ids_sha256_u32le"],
+        "sha256_match": sha_match,
+        "ids_match": ids_match,
+        "first_difference": difference,
+        "got_id_at_first_difference": got_id,
+        "recorded_id_at_first_difference": recorded_id,
+        "ok": bool(ids_match and sha_match and len(ids) == record["n"]),
+    }
 
 
 def check_prompts_json(document):
@@ -284,19 +486,44 @@ def load_calibration_tokenizer(tokenizer_json_path):
     return Tokenizer.from_file(str(tokenizer_json_path))
 
 
-def check_prompts(tokenizer, document):
-    """Check every prompt in document with tokenizer and compare_prompt."""
+def check_prompts(tokenizer, document, lib_tokenizer):
+    """Check every prompt with the transformers and tokenizers tokenizers.
+
+    The two ids paths are independent: a failure in one makes only its own
+    sub-report not ok.  compare_prompt's top-level fields keep their old names
+    and are computed from the transformers path for backward compatibility.
+    """
     results = []
     for record in document["prompts"]:
         messages = record["messages"]
         text = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
-        ids = list(
-            tokenizer(text, add_special_tokens=True)["input_ids"]
-        )
+
+        lib_ids = None
         try:
-            ids2 = list(
+            lib_ids = normalize_ids(
+                lib_tokenizer.encode(text, add_special_tokens=True)
+            )
+            lib_report = ids_subreport(record, ids=lib_ids)
+        except Exception as error:
+            lib_report = ids_subreport(
+                record, error="%s: %s" % (type(error).__name__, error)
+            )
+
+        transformers_ids = None
+        try:
+            transformers_ids = normalize_ids(
+                tokenizer(text, add_special_tokens=True)
+            )
+            transformers_report = ids_subreport(record, ids=transformers_ids)
+        except Exception as error:
+            transformers_report = ids_subreport(
+                record, error="%s: %s" % (type(error).__name__, error)
+            )
+
+        try:
+            ids2 = normalize_ids(
                 tokenizer.apply_chat_template(
                     messages, tokenize=True, add_generation_prompt=True
                 )
@@ -314,8 +541,17 @@ def check_prompts(tokenizer, document):
                 "error": "%s: %s" % (type(error).__name__, error),
                 "informational_only": True,
             }
-        compared = compare_prompt(record, text, ids)
+
+        compared = compare_prompt(
+            record, text, transformers_ids if transformers_ids is not None else []
+        )
+        compared["ids_tokenizers_lib"] = lib_report
+        compared["ids_transformers"] = transformers_report
         compared["ids2"] = ids2_report
+        text_ok = bool(compared["text_match"] and compared["text_sha256_match"])
+        compared["ok"] = bool(
+            text_ok and lib_report["ok"] and transformers_report["ok"]
+        )
         results.append(compared)
     return {
         "ok": all(result["ok"] for result in results),
@@ -479,6 +715,7 @@ def main(argv=None):
         "prompt_set": "TL-PROMPTS-1",
         "checkpoint": args.checkpoint_dir,
         "revision": revision,
+        "versions": collect_versions(),
     }
     sections = []
 
@@ -486,7 +723,9 @@ def main(argv=None):
         document = load_prompt_set()
         internal = check_prompts_json(document)
         tokenizer = load_tokenizer(args.checkpoint_dir, revision)
-        prompts = check_prompts(tokenizer, document)
+        tokenizer_json = resolve_tokenizer_json(args.checkpoint_dir, revision)
+        lib_tokenizer = load_calibration_tokenizer(tokenizer_json)
+        prompts = check_prompts(tokenizer, document, lib_tokenizer)
         prompts_ok = bool(internal["ok"] and prompts["ok"])
         report["prompts"] = {
             "ok": prompts_ok,
