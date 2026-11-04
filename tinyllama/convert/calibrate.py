@@ -205,7 +205,11 @@ def _rms_norm(x, eps):
 
 def _silu(x):
     values = np.asarray(x, dtype=np.float32)
-    return values / (np.float32(1.0) + np.exp(-values))
+    # For very negative values exp(-values) overflows to inf, so the quotient
+    # becomes -0.0, which is the correct limit of SiLU. The overflow warning is
+    # harmless, so ignore only that warning and keep the expression unchanged.
+    with np.errstate(over="ignore"):
+        return values / (np.float32(1.0) + np.exp(-values))
 
 
 def _rotary_neighbour(x, cosines, sines):
