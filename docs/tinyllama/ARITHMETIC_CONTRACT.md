@@ -279,7 +279,7 @@ mismatch; it never evaluates exp, cos or sin at inference time. Values below wer
 FlashProve's own functions in tables.py (rotary_tables, softmax_table, silu_table, table_digest) with torch stubbed
 out (work/scratch/tables_probe.py).
 
-| table | size | domain | construction (docs/model.md) | range | FlashProve digest words 0..7 | sha256 of digest words |
+| table | size | domain | construction (docs/model.md) | range | FlashProve digest words 0..7 | sha256 of table words |
 |---|---|---|---|---|---|---|
 | C, S rotary | 1024 x 32 each (32,768 entries each) | t < 1024, i < 32 | 134-135: x = t pow(10000, -2i/64), rha(2^12 cos x), rha(2^12 sin x) | -4096 .. 4096 | trope: 2141436500 1986672181 1784239491 223369813 3762430148 1100108057 3971569448 1221024000 | 973450425e0f39b307e1561d7aaa70904b0fab3d5862e453b70ccfd7c60915c1 |
 | EX softmax | u0 = 2307 entries | u = 0 .. 2306 | 136-137: rne(2^12 exp(-u / 2^8)), ends before the first 0 | 1 .. 4096 | texp: 3648852807 2402568834 4186852988 523559909 1873895626 3042864545 1726265496 165292856 | e27fdb2a6e9b273138ee66a6729de3c2c186ac1e81d24e5514ad29c155221b63 |
