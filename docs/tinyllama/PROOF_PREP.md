@@ -111,3 +111,123 @@ to record are `plan-accounting.txt` (the `proof`, `key`, `entry` and bits lines)
 `plan-request.txt` (the line `plan: not the standard parameter form (...)`, which M1 expects to name
 only `routed-experts`, `both-clamps` and `table-digests`).  Until those calls run, table size, proof
 size and security bits remain not measured.
+
+## M3 pod runbook
+
+Status: work item W-B.  The two scripts below exist and their synthetic tests pass.  **Nothing in
+this section has been run on real weights**; the commands and expected shapes are the pod recipe,
+not measured M3 results.  M3 needs no GPU, no prover build and no FlashProve edit.  Use the approved
+`cpu3g-8-32` pod and follow `work/scratch/runpod_pod2.md` and
+[REPRODUCE.md](REPRODUCE.md): one pod at a time, stopped when idle.  Never echo `RUNPOD_API_KEY`;
+the examples only pass it through the environment.  The container disk is wiped when the pod stops,
+so copy every report off the pod before stopping it.
+
+Inputs: a validated TL-INT-1 artifact directory.  Run 3's artifact id is
+`1d8e5cf46c89d951c1c449dc3c03d963f32176360a016d78e4d2537d39b088a9` (REPRODUCE.md, D35).  If that
+artifact is not preserved outside the pod, rebuild it first with the commands in REPRODUCE.md; the
+M3 scripts do not create it.
+
+### Environment
+
+Use the Python 3.13 environment from run 3, because `crosscheck_full` needs torch CPU:
+
+```sh
+pip install uv
+uv venv --python 3.13 /workspace/venv313
+uv pip install --python /workspace/venv313/bin/python \
+  numpy==2.5.4 pytest==9.2.0
+uv pip install --python /workspace/venv313/bin/python torch==2.9.1 \
+  --index-url https://download.pytorch.org/whl/cpu
+cd /workspace/repo
+/workspace/venv313/bin/python -m pytest tests/tinyllama/proof -q
+```
+
+Expected on the pod: `11 passed`, so the torch tests run rather than skip.  (On this box the same
+command printed `11 passed` with torch 2.15.0+cpu; the pod's torch has not been tried.)
+
+### 1. Gate-key margin on the four prompts
+
+```sh
+export ARTIFACT=/workspace/repo/artifacts/TL-INT-1/1d8e5cf46c89d951c1c449dc3c03d963f32176360a016d78e4d2537d39b088a9
+mkdir -p /workspace/reports/gate-margin
+for P in P0 P1 P2 P3; do
+  /workspace/venv313/bin/python -m tinyllama.proof.gate_margin \
+    --artifact "$ARTIFACT" --prompt "$P" \
+    > "/workspace/reports/gate-margin/$P.txt"
+done
+```
+
+Each file has one line for each of the 22 layers (`layer 00` to `layer 21`) and a final `summary`
+line.  O2 option B is the no-`gcl` form, where `key = gw` and condition 6 is on `gw`; this is the
+`gw` statistic of PROVING_PLAN T3.1.  Success is `outside_16bit 0` and `fits_16bit yes` on every
+layer, with
+`all_layers_fit_16bit yes` in the summary, and exit code 0.  If any layer reports a nonzero
+`outside_16bit`, option B of O2 fails on that prompt: stop, keep the file, and report it.  The
+per-layer `max_abs_gw` values are not known until the run; do not fill them in from anything else.
+
+### 2. Gate-key margin on the 40 calibration windows
+
+The same forward pass over 1024 positions is the expensive part of P4.  Run one process per window,
+eight at a time, using the `--window-file` and `--window-index` options:
+
+```sh
+mkdir -p /workspace/reports/gate-margin-windows
+export FILE SET
+for SET in heldout fit; do
+  FILE="/workspace/calib/$SET.npy"
+  N=$(/workspace/venv313/bin/python -c \
+    'import numpy as np,sys; print(np.load(sys.argv[1], allow_pickle=False).shape[0])' "$FILE")
+  seq 0 $((N - 1)) | xargs -P 8 -I{} bash -c '
+    /workspace/venv313/bin/python -m tinyllama.proof.gate_margin \
+      --artifact "$ARTIFACT" --window-file "$FILE" --window-index "$1" \
+      > "/workspace/reports/gate-margin-windows/$SET-$1.txt"' _ {}
+done
+grep -L 'outside_16bit 0 all_layers_fit_16bit yes' \
+  /workspace/reports/gate-margin-windows/*.txt || true
+```
+
+Expected: 8 files for `heldout` and 32 for `fit`; the last command prints no file name, meaning every
+window had zero keys outside 16 bits.  A printed file name is the finding; keep it and stop.
+
+No wall time for `gate_margin` itself has been measured.  The closest sourced figures are run 3's P4
+range report, which uses the same integer forward: 8 held-out windows took `25:53.79` and 32 fit
+windows `1:43:45`, with 8 workers and 1364.7 to 1444 s per window (REPRODUCE.md).  PROVING_PLAN M3
+budgets about 3.5 h for the pod session.
+
+### 3. Full-dimensional layer cross check
+
+Run one layer first, then the remaining layers if the first is clean:
+
+```sh
+mkdir -p /workspace/reports/crosscheck
+for L in $(seq 0 21); do
+  /workspace/venv313/bin/python -m tinyllama.proof.crosscheck_full \
+    --artifact "$ARTIFACT" --prompt P0 --layer "$L" \
+    > "/workspace/reports/crosscheck/P0-layer$L.txt" \
+    2> "/workspace/reports/crosscheck/P0-layer$L.err"
+done
+grep -l 'DIFFERENT\|NOT-COMPARABLE' /workspace/reports/crosscheck/*.txt || true
+```
+
+Each file has 15 comparison lines (9 attention, 5 feed-forward, 1 `x_out`), all ending `EQUAL`.
+Expected: no file name from the last command, and exit code 0 from each call.  A stderr `note:` may
+say that `Parameters(...)` refused the dense artifact and was bypassed; that is the known
+`NE = 0`/`gcl` validation bypass (O2), not a difference.  Any `DIFFERENT` or `NOT-COMPARABLE` line is
+a finding: stop, keep both files, and report the first differing index.  No duration has been
+measured for `crosscheck_full`; time layer 0 before starting all 22.
+
+### Stop the pod
+
+Copy `/workspace/reports/` to the box first, then stop the pod recorded in REPRODUCE.md (currently
+`roensk5w2gn6am`) and verify `EXITED`:
+
+```sh
+export POD_ID=roensk5w2gn6am
+curl -X POST -H "Authorization: Bearer $RUNPOD_API_KEY" \
+  "https://rest.runpod.io/v1/pods/$POD_ID/stop"
+curl -s -H "Authorization: Bearer $RUNPOD_API_KEY" \
+  "https://rest.runpod.io/v1/pods/$POD_ID" | grep -o '"desiredStatus":"[^"]*"'
+```
+
+Record the start and stop times and the pod minutes.  Do not print the key, and do not leave the pod
+running for a later step.
