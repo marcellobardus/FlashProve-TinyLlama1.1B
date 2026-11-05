@@ -322,7 +322,7 @@ def main(argv=None):
 
     for line in format_report(report):
         print(line)
-    return 1 if report.range_failure is not None else 0
+    return 0 if report.all_layers_fit_16_bits else 1
 
 
 if __name__ == "__main__":

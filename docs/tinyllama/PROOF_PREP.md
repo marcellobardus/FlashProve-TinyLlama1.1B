@@ -20,14 +20,19 @@ The tool writes:
 
 - `policy.txt`: the frame lines `version` to `ranges-part` come from
   `prover/examples/target_small_f2_roomy/policy.txt`; the `table` line is recomputed for the
-  artifact's shape and vocabulary.  The model lines are dense (`NE 0`, `ll 1`, no experts), use the
-  artifact's `params.json` for `L`, `d`, `H`, `G`, `dh`, `f`, `V`, `MF`, `KF`, `s`, `eps1`, `eps2`
-  and `epsF`, and use the shift ceilings of contract TL-INT-1 for the digit forms.  The acceptance
-  policy is the exact match (`C 256`, `theta 256`, `cap 0`, `sh 8`, `sT 4`, `F 24`).  There is no
-  `gcl`, no `rcl`, no `eg`/`smax`, and no table-digest line.  The layer call lines omit the segments
-  `XR`, `LR`, `LT`, `DD`, `LH`, `SEL`, `L3`, `CLR`, `MR`, `G0` and `CG`; `iota_*`, `iotaA_0` and
-  `iotaH_*` are computed by the same rules as `verifier/tests/forest_lines.py` and the attention and
-  output-head call layouts.  `--lt N` selects the window (4 to 10; M1 asks for 6 and 10).
+  artifact's shape and vocabulary.  It follows the prover's `table_derive()` rules in
+  `prover/hash_commitment/hf_table_params.h`: `i0` is the smallest even multiple of
+  max(`2^(block_log - table_rows_log)`, `2^ceil_log2(nm)`) that is at least the row length plus
+  `3 * answers`, and `fln` is at least `ceil_log2(i0 + nm) + 1`.  The model lines are dense
+  (`NE 0`, `ll 1`, no experts), use the artifact's `params.json` for `L`, `d`, `H`, `G`, `dh`, `f`,
+  `V`, `MF`, `KF`, `s`, `eps1`, `eps2` and `epsF`, and use the shift ceilings of contract TL-INT-1
+  for the digit forms.  The acceptance policy is the exact match (`C 256`, `theta 256`, `cap 0`,
+  `sh 8`, `sT 4`, `F 24`).  There is no `gcl`, no `rcl`, no `eg`/`smax`, and no table-digest line.
+  The layer call lines omit the segments `XR`, `LR`, `LT`, `DD`, `LH`, `SEL`, `L3`, `CLR`, `MR`,
+  `G0` and `CG`; `iota_*`, `iotaA_0` and `iotaH_*` are computed by the same rules as
+  `verifier/tests/forest_lines.py` and the attention and output-head call layouts.  `--lt N`
+  selects the window (6 to 10; M1 asks for 6 and 10); lower values are refused because the prover
+  requires `lB >= 4` and this kit derives `lB = min(6, N - 2)`.
 - `KL.bin`: copied byte for byte from the artifact.
 - `layout.txt`: written only when a usable `cp_verify` is available.  The tool runs
   `cp_verify -plan arrays OUT 128` and then `prover/tools/pack_layout.py --arrays ...` with the link
@@ -124,8 +129,38 @@ so copy every report off the pod before stopping it.
 
 Inputs: a validated TL-INT-1 artifact directory.  Run 3's artifact id is
 `1d8e5cf46c89d951c1c449dc3c03d963f32176360a016d78e4d2537d39b088a9` (REPRODUCE.md, D35).  If that
-artifact is not preserved outside the pod, rebuild it first with the commands in REPRODUCE.md; the
-M3 scripts do not create it.
+artifact is not preserved outside the pod, rebuild it before running these scripts; the M3 scripts
+do not create it.  [REPRODUCE.md](REPRODUCE.md) records the pod, environment and timings only, so
+follow the pod command order in `work/DECISIONS.md:184-191` instead.  In that order, download the
+checkpoint at the pinned revision (`docs/tinyllama/CHECKPOINT_MANIFEST.md:9-11`) into `/workspace/ckpt`
+with the Hugging Face CLI, for example:
+
+```sh
+hf download TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --revision fe8a4ea1ffedaf415f4da2f062534de366a451e6 \
+  --local-dir /workspace/ckpt
+```
+
+Then step 1 of the DECISIONS order writes `/workspace/calib` and step 5 builds the artifact:
+
+```sh
+mkdir -p /workspace/calib
+WIKITEXT_PARQUET=/path/to/wikitext-2-raw-v1/train-00000-of-00001.parquet
+python3 tests/tinyllama/eval/check_inputs.py \
+  --checkpoint-dir /workspace/ckpt --parquet "$WIKITEXT_PARQUET" \
+  --out p5.json \
+  --fit-npy /workspace/calib/fit.npy \
+  --heldout-npy /workspace/calib/heldout.npy
+PYTHONPATH=. python3 -m tinyllama.convert.run \
+  --checkpoint /workspace/ckpt --out /workspace/repo/artifacts/TL-INT-1 \
+  --calib /workspace/calib/fit.npy --calib-sha256 FIT_SHA256 \
+  --heldout /workspace/calib/heldout.npy --heldout-sha256 HELDOUT_SHA256 \
+  --workers 8 \
+  --report /workspace/repo/artifacts/TL-INT-1/range-report.json
+```
+
+Steps 2 to 4 of that order are the P1, P2 and P3 checks and can be skipped when only the artifact is
+needed.  `tinyllama/convert/run.py:1-8` states the same conversion call.
 
 ### Environment
 
@@ -142,8 +177,21 @@ cd /workspace/repo
 /workspace/venv313/bin/python -m pytest tests/tinyllama/proof -q
 ```
 
-Expected on the pod: `11 passed`, so the torch tests run rather than skip.  (On this box the same
-command printed `11 passed` with torch 2.15.0+cpu; the pod's torch has not been tried.)
+The torch tests run on the pod, so the expected count is the torch count measured on this box, not
+the smaller count below.  The pod's torch 2.9.1 has not been tried.
+
+Measured on this box (2026-11-05) with the two interpreters named:
+
+```text
+$ python3 -m pytest tests/tinyllama/proof -q
+11 passed, 1 skipped
+$ /workspace/tl-torch-venv/bin/python -m pytest tests/tinyllama/proof -q
+14 passed
+```
+
+`python3` is Python 3.13.5 without torch, so the torch tests skip.  The venv is Python 3.13.5 with
+torch 2.15.0+cpu, so all 14 run.  `/workspace/venv313/bin/python` is the pod's path, created by the
+commands above; it does not exist on this box.
 
 ### 1. Gate-key margin on the four prompts
 
@@ -155,15 +203,18 @@ for P in P0 P1 P2 P3; do
     --artifact "$ARTIFACT" --prompt "$P" \
     > "/workspace/reports/gate-margin/$P.txt"
 done
+grep -L 'outside_16bit 0 all_layers_fit_16bit yes' \
+  /workspace/reports/gate-margin/P*.txt || true
 ```
 
 Each file has one line for each of the 22 layers (`layer 00` to `layer 21`) and a final `summary`
 line.  O2 option B is the no-`gcl` form, where `key = gw` and condition 6 is on `gw`; this is the
 `gw` statistic of PROVING_PLAN T3.1.  Success is `outside_16bit 0` and `fits_16bit yes` on every
-layer, with
-`all_layers_fit_16bit yes` in the summary, and exit code 0.  If any layer reports a nonzero
-`outside_16bit`, option B of O2 fails on that prompt: stop, keep the file, and report it.  The
-per-layer `max_abs_gw` values are not known until the run; do not fill them in from anything else.
+layer, with `all_layers_fit_16bit yes` in the summary, and exit code 0.  The last command prints no
+file name under that condition.  A nonzero exit code reports keys outside the interval as well as a
+reference range failure.  If any layer reports a nonzero `outside_16bit`, option B of O2 fails on
+that prompt: stop, keep the file, and report it.  The per-layer `max_abs_gw` values are not known
+until the run; do not fill them in from anything else.
 
 ### 2. Gate-key margin on the 40 calibration windows
 
@@ -191,26 +242,35 @@ window had zero keys outside 16 bits.  A printed file name is the finding; keep 
 
 No wall time for `gate_margin` itself has been measured.  The closest sourced figures are run 3's P4
 range report, which uses the same integer forward: 8 held-out windows took `25:53.79` and 32 fit
-windows `1:43:45`, with 8 workers and 1364.7 to 1444 s per window (REPRODUCE.md).  PROVING_PLAN M3
-budgets about 3.5 h for the pod session.
+windows `1:43:45`, with 8 workers and `1364.7` to `1377.4` s per window.  The wall times are in
+[REPRODUCE.md](REPRODUCE.md):33 and `work/STATUS.md:102`; the per-window range is measured in
+`work/STATUS.md:102`.  PROVING_PLAN M3 budgets about 3.5 h for the pod session.
 
 ### 3. Full-dimensional layer cross check
 
-Run one layer first, then the remaining layers if the first is clean:
+Run layer 0 first.  The loop over layers 1 to 21 runs only when layer 0 is clean:
 
 ```sh
 mkdir -p /workspace/reports/crosscheck
-for L in $(seq 0 21); do
+run_layer() {
   /workspace/venv313/bin/python -m tinyllama.proof.crosscheck_full \
-    --artifact "$ARTIFACT" --prompt P0 --layer "$L" \
-    > "/workspace/reports/crosscheck/P0-layer$L.txt" \
-    2> "/workspace/reports/crosscheck/P0-layer$L.err"
-done
-grep -l 'DIFFERENT\|NOT-COMPARABLE' /workspace/reports/crosscheck/*.txt || true
+    --artifact "$ARTIFACT" --prompt P0 --layer "$1" \
+    > "/workspace/reports/crosscheck/P0-layer$1.txt" \
+    2> "/workspace/reports/crosscheck/P0-layer$1.err"
+}
+run_layer 0
+if grep -q 'DIFFERENT\|NOT-COMPARABLE' /workspace/reports/crosscheck/P0-layer0.txt; then
+  echo "layer 0 is a finding: stop and keep both files"
+else
+  for L in $(seq 1 21); do
+    run_layer "$L"
+  done
+  grep -l 'DIFFERENT\|NOT-COMPARABLE' /workspace/reports/crosscheck/*.txt || true
+fi
 ```
 
 Each file has 15 comparison lines (9 attention, 5 feed-forward, 1 `x_out`), all ending `EQUAL`.
-Expected: no file name from the last command, and exit code 0 from each call.  A stderr `note:` may
+Expected: no file name from the last `grep`, and exit code 0 from each call.  A stderr `note:` may
 say that `Parameters(...)` refused the dense artifact and was bypassed; that is the known
 `NE = 0`/`gcl` validation bypass (O2), not a difference.  Any `DIFFERENT` or `NOT-COMPARABLE` line is
 a finding: stop, keep both files, and report the first differing index.  No duration has been

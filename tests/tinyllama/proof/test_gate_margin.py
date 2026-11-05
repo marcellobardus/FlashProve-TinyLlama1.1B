@@ -109,6 +109,31 @@ def test_main_reports_every_layer_and_integer_values(artifact, capsys):
     assert "all_layers_fit_16bit " in lines[-1]
 
 
+def test_main_exits_nonzero_for_a_key_outside_16_bits(
+    artifact, monkeypatch, capsys
+):
+    report = gate_margin.MarginReport(
+        layers=[gate_margin.LayerMargin(0, -40000, 0, 1)],
+        token_ids=[1],
+        mode="prefix",
+    )
+    monkeypatch.setattr(gate_margin, "collect", lambda *args, **kwargs: report)
+    code = gate_margin.main(
+        [
+            "--artifact",
+            _directory(artifact),
+            "--ids",
+            "1",
+            "--dims-test",
+            DIMS_TEXT,
+        ]
+    )
+    output = capsys.readouterr().out
+    assert code == 1
+    assert "outside_16bit 1" in output
+    assert "all_layers_fit_16bit no" in output
+
+
 def test_wrong_token_id_is_refused(artifact, capsys):
     code = gate_margin.main(
         [

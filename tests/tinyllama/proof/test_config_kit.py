@@ -1,9 +1,11 @@
 import hashlib
 from pathlib import Path
+import struct
 
 import pytest
 
 import tiny_artifact as ta
+from tinyllama import contract
 from tinyllama.artifacts import Dims
 from tinyllama.proof import config_kit
 
@@ -26,6 +28,32 @@ def _values(lines):
 def _artifact(tmp_path):
     root = tmp_path / "artifact-root"
     return ta.build_artifact(root, dims=KIT_DIMS, kl_rows=[KL_ROW] * KIT_DIMS.L)
+
+
+def _table_rule_errors(table, values):
+    """The table_derive() rules of prover/hash_commitment/hf_table_params.h."""
+    rows_log, log_n, data, random_entries, _zero, block_log = (
+        int(field) for field in table[1:]
+    )
+    errors = []
+    if rows_log > block_log:
+        errors.append("rows log above block log")
+    row_data = config_kit._weight_matrix_rows(values, block_log) * (
+        1 << (block_log - rows_log)
+    )
+    if data < row_data + 3:
+        errors.append("data below rows plus pads")
+    if random_entries % 2 != 1:
+        errors.append("random entries not odd")
+    if data % (1 << config_kit._ceil_log2(random_entries)) != 0:
+        errors.append("data not a multiple of the least power of two at least random entries")
+    if data % 2 != 0:
+        errors.append("data not even")
+    if data % (1 << (block_log - rows_log)) != 0:
+        errors.append("data not a multiple of 2^(block log - rows log)")
+    if config_kit._ceil_log2(data + random_entries) + 1 > log_n:
+        errors.append("log n below ceil_log2(data + random entries) + 1")
+    return errors
 
 
 def test_kit_is_deterministic_and_copies_the_artifact_scales(tmp_path):
@@ -113,6 +141,7 @@ def test_kit_is_deterministic_and_copies_the_artifact_scales(tmp_path):
     assert data >= matrix_rows * (1 << (block_log - rows_log)) + 3
     assert data + random_entries < (1 << log_n)
     assert block_log >= (KIT_DIMS.V - 1).bit_length()
+    assert _table_rule_errors(table, values) == []
 
 
 def test_kit_at_lt_10_and_wrong_artifact_id(tmp_path):
@@ -140,3 +169,21 @@ def test_kit_at_lt_10_and_wrong_artifact_id(tmp_path):
 
     with pytest.raises(config_kit.KitError):
         config_kit.build_config("TL-INT-1", tmp_path / "contract-only", lt=6, layout=False)
+
+
+def test_contract_table_line_matches_the_prover_rules(tmp_path):
+    kl = tmp_path / "KL.bin"
+    kl.write_bytes(struct.pack("<13I", *KL_ROW) * contract.L)
+    out = tmp_path / "kit-tl-int-1"
+    config_kit.build_config("TL-INT-1", out, lt=6, kl_path=kl, layout=False)
+
+    lines = _lines(out)
+    table = [line.split() for line in lines if line.startswith("table ")][0]
+    assert " ".join(table) == "table 8 25 10027008 65535 0 15"
+    assert _table_rule_errors(table, _values(lines)) == []
+
+
+def test_lt_below_six_is_refused(tmp_path):
+    artifact = _artifact(tmp_path)
+    with pytest.raises(config_kit.KitError):
+        config_kit.build_config(artifact, tmp_path / "kit-lt5", lt=5, layout=False)

@@ -218,10 +218,12 @@ def run(artifact, token_ids, layer_index=0):
 
     failure = checks.first_failure()
     if failure is not None:
+        position, condition = failure
         result.comparisons.extend(
             _not_comparable(
                 names,
-                "FlashProve range condition %d failed at position %d" % failure,
+                "FlashProve range condition %d failed at position %d"
+                % (condition, position),
             )
         )
         return result

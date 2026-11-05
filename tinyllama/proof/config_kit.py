@@ -334,8 +334,16 @@ def _table_line(values, template_fields):
     matrix_rows = _weight_matrix_rows(values, block_log)
     data = matrix_rows * (1 << (block_log - rows_log))
     answers = 1
-    table_data = data + 3 * answers
-    table_log_n = max(log_n, (table_data + random_entries).bit_length(), rows_log)
+    pads = data + 3 * answers
+    run = 1 << (block_log - rows_log)
+    mask_run = 1 << _ceil_log2(random_entries)
+    step = max(2, run, mask_run)
+    table_data = (pads + step - 1) // step * step
+    table_log_n = max(
+        log_n,
+        _ceil_log2(table_data + random_entries) + 1,
+        rows_log,
+    )
     if table_log_n > 32:
         raise KitError("the table needs code length 2^%d, above 2^32" % table_log_n)
     if table_data >= (1 << 32):
@@ -653,8 +661,8 @@ def build_config(
     values = _normalise(params, kl)
     if lt is None:
         lt = values.get("lt", contract.LT)
-    if not isinstance(lt, int) or isinstance(lt, bool) or lt < 4 or lt > 10:
-        raise KitError("lt must be an integer from 4 to 10, not %r" % (lt,))
+    if not isinstance(lt, int) or isinstance(lt, bool) or lt < 6 or lt > 10:
+        raise KitError("lt must be an integer from 6 to 10, not %r" % (lt,))
     policy = build_policy(values, kl, lt)
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
@@ -684,7 +692,7 @@ def main(argv=None):
     )
     parser.add_argument("--artifact", required=True, help="artifact directory, or TL-INT-1")
     parser.add_argument("--out", required=True, help="configuration directory to write")
-    parser.add_argument("--lt", type=int, help="log2 of the request window (4 to 10)")
+    parser.add_argument("--lt", type=int, help="log2 of the request window (6 to 10)")
     parser.add_argument("--kl", help="KL.bin for a contract id instead of an artifact directory")
     parser.add_argument("--artifact-id", help="expected artifact id (sha256 of manifest.json)")
     parser.add_argument("--cp-verify", help="cp_verify to run -plan arrays and make layout.txt")
