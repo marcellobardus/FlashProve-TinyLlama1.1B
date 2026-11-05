@@ -161,9 +161,13 @@ base `9e2bdd8f` unless a path is under `work/scratch/` (git ignored probe files,
   c0 = RN32(sqrt(d) / 2^t) with t = 5 at d = 2048 (scales/README.md:595-601), not sqrt(d) / 64. The two choices
   differ by exactly a factor 2 and give the same weight integers with exponent e one apart
   (ARITHMETIC_CONTRACT.md, section 4.3). Marcello may override.
-- O5 (open, W2/W3). Cross check against FlashProve model.py (T2.3): model.py needs torch and its parameter file
-  reader refuses NE = 0 with digests (parameters.py:526-527). Hypothesis: the cross check can drive model.py's
-  arithmetic functions directly with constructed parameters; to be tried on the pod.
+- O5 (partly resolved 2026-11-05, T2.3). Cross check against FlashProve model.py: `python -m tinyllama.reference.crosscheck`
+  (needs torch, run in a CPU torch venv) compares our reference with model.py at a tiny synthetic shape (d 64, L 1):
+  52 EQUAL, 0 DIFFERENT, 0 NOT-COMPARABLE, covering rq, clamp, floor_div, gate key, rotary and softmax and SiLU
+  tables, norm, rotary, attention, feed forward, one whole layer and a full extend() to the greedy token. Gaps: the
+  script bypasses Parameters validation "rcl and gcl need a model with experts" (NE 0 with gcl 1, see O2), gain folding
+  (O4) is converter side and not comparable, pairing permutation is conversion side. Not yet done: same comparison at
+  full dimensions with real weights (needs a pod and approval).
 
 ## 2026-11-04 integration round 3 (done)
 
