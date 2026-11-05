@@ -18,3 +18,12 @@
 # What Python and pytest leave behind.
 __pycache__/
 .pytest_cache/
+
+# TinyLlama workstream: large or generated artifacts stay out of Git.
+/artifacts/
+/work/scratch/
+*.safetensors
+*.gguf
+*.bin.weights
+/hf_cache/
+/traces/

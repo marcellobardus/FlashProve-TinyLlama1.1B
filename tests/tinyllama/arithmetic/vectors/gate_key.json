@@ -1,0 +1,24 @@
+{
+  "primitive": "g0 = low8(gw), gh = (gw - g0)/256, gc = clamp(gh; 127), key = 256 gc + g0 (ARITHMETIC_CONTRACT.md 9.2)",
+  "cases": [
+    {"gw": 300, "g0": 44, "gh": 1, "gc": 1, "key": 300, "note": "contract example"},
+    {"gw": -300, "g0": -44, "gh": -1, "gc": -1, "key": -300, "note": "contract example"},
+    {"gw": 128, "g0": -128, "gh": 1, "gc": 1, "key": 128, "note": "contract example"},
+    {"gw": -129, "g0": 127, "gh": -1, "gc": -1, "key": -129, "note": "contract example"},
+    {"gw": 40000, "g0": 64, "gh": 156, "gc": 127, "key": 32576, "note": "contract example: Ts constant there, 4095"},
+    {"gw": 0, "g0": 0, "gh": 0, "gc": 0, "key": 0},
+    {"gw": 1, "g0": 1, "gh": 0, "gc": 0, "key": 1},
+    {"gw": -1, "g0": -1, "gh": 0, "gc": 0, "key": -1},
+    {"gw": 127, "g0": 127, "gh": 0, "gc": 0, "key": 127},
+    {"gw": 129, "g0": -127, "gh": 1, "gc": 1, "key": 129},
+    {"gw": 255, "g0": -1, "gh": 1, "gc": 1, "key": 255},
+    {"gw": -128, "g0": -128, "gh": 0, "gc": 0, "key": -128},
+    {"gw": -131, "g0": 125, "gh": -1, "gc": -1, "key": -131},
+    {"gw": -255, "g0": 1, "gh": -1, "gc": -1, "key": -255},
+    {"gw": 256, "g0": 0, "gh": 1, "gc": 1, "key": 256},
+    {"gw": -256, "g0": 0, "gh": -1, "gc": -1, "key": -256},
+    {"gw": 32767, "g0": -1, "gh": 128, "gc": 127, "key": 32511, "note": "gh past 127: key saturates, Ts constant there"},
+    {"gw": -32768, "g0": 0, "gh": -128, "gc": -127, "key": -32512, "note": "gh at the low edge of condition 6"},
+    {"gw": -40000, "g0": -64, "gh": -156, "gc": -127, "key": -32576}
+  ]
+}

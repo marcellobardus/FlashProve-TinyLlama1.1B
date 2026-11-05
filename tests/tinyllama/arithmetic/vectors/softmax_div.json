@@ -1,0 +1,28 @@
+{
+  "primitive": "softmax division o = floor((2 acc + Z) / (2 Z)): acc / Z rounded to nearest, ties up (ARITHMETIC_CONTRACT.md 9.1 step 4)",
+  "cases": [
+    {"acc": 3, "z": 2, "expected": 2, "note": "contract text: 1.5 ties up"},
+    {"acc": -3, "z": 2, "expected": -1, "note": "contract text: -1.5 ties up"},
+    {"acc": 5, "z": 2, "expected": 3, "note": "contract text: 2.5 ties up"},
+    {"acc": -5, "z": 2, "expected": -2, "note": "contract text: -2.5 ties up"},
+    {"acc": -7, "z": 4, "expected": -2, "note": "contract text: -1.75 rounds to -2"},
+    {"acc": 0, "z": 4096, "expected": 0},
+    {"acc": 4096, "z": 4096, "expected": 1, "note": "Z >= EX[0] = 4096, exact 1"},
+    {"acc": -4096, "z": 4096, "expected": -1, "note": "exact -1"},
+    {"acc": 2047, "z": 4096, "expected": 0, "note": "just below 0.5"},
+    {"acc": -2047, "z": 4096, "expected": 0, "note": "just above -0.5, ties up to 0"},
+    {"acc": 8585740288, "z": 4194304, "expected": 2047, "note": "acc bound 1024 x 4096 x 2047 over Z = 2^22: |o| <= 2047"},
+    {"acc": -8585740288, "z": 4194304, "expected": -2047},
+    {"acc": 2, "z": 4, "expected": 1, "note": "0.5 ties up"},
+    {"acc": -2, "z": 4, "expected": 0, "note": "-0.5 ties up"},
+    {"acc": 6, "z": 4, "expected": 2, "note": "1.5 ties up"},
+    {"acc": -6, "z": 4, "expected": -1, "note": "-1.5 ties up"},
+    {"acc": 7, "z": 4, "expected": 2, "note": "1.75 rounds to 2"},
+    {"acc": 1, "z": 2, "expected": 1, "note": "0.75 rounds to 1"},
+    {"acc": -1, "z": 2, "expected": 0, "note": "-0.25 rounds to 0"},
+    {"acc": 1, "z": 1, "expected": 1, "note": "z = 1, arithmetic only: exact 1"},
+    {"acc": -1, "z": 1, "expected": -1, "note": "z = 1, arithmetic only: (-2 + 1) floors to -1"},
+    {"acc": 3, "z": 1, "expected": 3},
+    {"acc": -3, "z": 1, "expected": -3, "note": "-2.5 floors to -3"}
+  ]
+}

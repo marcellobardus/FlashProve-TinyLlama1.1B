@@ -1,0 +1,32 @@
+{
+  "primitive": "low8(a) = ((a + 128) mod 256) - 128, in -128 .. 127 (ARITHMETIC_CONTRACT.md 2.3)",
+  "cases": [
+    {"a": 0, "expected": 0},
+    {"a": 1, "expected": 1},
+    {"a": 64, "expected": 64},
+    {"a": -64, "expected": -64},
+    {"a": 127, "expected": 127},
+    {"a": 128, "expected": -128, "note": "wraps at +128"},
+    {"a": 129, "expected": -127},
+    {"a": 191, "expected": -65},
+    {"a": 192, "expected": -64},
+    {"a": 255, "expected": -1},
+    {"a": 256, "expected": 0},
+    {"a": 300, "expected": 44, "note": "contract gate key example g0"},
+    {"a": -300, "expected": -44, "note": "contract gate key example g0"},
+    {"a": -129, "expected": 127, "note": "contract gate key example g0"},
+    {"a": -128, "expected": -128},
+    {"a": -1, "expected": -1},
+    {"a": -255, "expected": 1},
+    {"a": -256, "expected": 0},
+    {"a": -193, "expected": 63},
+    {"a": 40000, "expected": 64, "note": "contract gate key example g0"},
+    {"a": -40000, "expected": -64},
+    {"a": 1000, "expected": -24},
+    {"a": 1024, "expected": 0},
+    {"a": 32767, "expected": -1},
+    {"a": -32768, "expected": 0},
+    {"a": 4611686018427387904, "expected": 0, "note": "2^62 is a multiple of 256"},
+    {"a": 4611686018427388204, "expected": 44, "note": "2^62 + 300"}
+  ]
+}
