@@ -24,12 +24,11 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, field
-from pathlib import Path
 import sys
 
 import numpy as np
 
-from tinyllama.artifacts import FULL, Dims, load_artifact
+from tinyllama.artifacts import FULL, load_artifact
 from tinyllama.reference.model import forward
 from tinyllama.reference.run import _parse_dims_test, load_prompt
 

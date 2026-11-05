@@ -24,7 +24,7 @@ import sys
 
 import numpy as np
 
-from tinyllama.artifacts import FULL, Dims, load_artifact
+from tinyllama.artifacts import FULL, load_artifact
 from tinyllama.reference import crosscheck as tiny
 from tinyllama.reference.layer import RangeFailure
 from tinyllama.reference.layer import layer as reference_layer
