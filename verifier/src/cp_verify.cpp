@@ -861,10 +861,13 @@ struct PolScan {
   Hdr h;
   CallLines polCalls, polCallsH, polCallsA;
   bool lidbSeen = false, nminHSeen = false, egSeen = false, smaxSeen = false, xlSeen = false;
-  /* The 4 DW optional lines of the parameter file, tsilu0 to texp<DW - 1>, hold the digests of the
-     four public tables, DW words each, in the order SILU, FS (SIG if the line gcl is absent), the
-     RoPE table, the softmax table. tblAt counts the lines read: after the scan it is 0 or TBLW. */
+  /* The optional lines of the parameter file, tsilu0 to texp<DW - 1>, hold the digests of the public
+     tables, DW words each, in the order SILU, FS/SIG, the RoPE table, the softmax table. A model
+     with experts (NE > 0) gives all four (TBLW lines); a dense model (NE 0) gives only the three it
+     uses, SILU, RoPE and softmax, and leaves out the FS/SIG line (3 * DW lines). tblCount[k] counts
+     the lines read for table k: after the scan each is 0 or DW. tblAt is their sum. */
   u32 tblPol[4][DW] = {};
+  size_t tblCount[4] = {};
   size_t tblAt = 0;
   vector<u32> polWordsH;
 };
@@ -938,6 +941,7 @@ static void polScan(PolScan &PS, const string &polB) {
   bool &lidbSeen = PS.lidbSeen, &nminHSeen = PS.nminHSeen, &egSeen = PS.egSeen, &smaxSeen = PS.smaxSeen,
        &xlSeen = PS.xlSeen;
   u32(&tblPol)[4][DW] = PS.tblPol;
+  size_t(&tblCount)[4] = PS.tblCount;
   size_t &tblAt = PS.tblAt;
   vector<u32> &polWordsH = PS.polWordsH;
   auto layW = [&](size_t i, u32 v) {
@@ -1098,11 +1102,12 @@ static void polScan(PolScan &PS, const string &polB) {
         xlSeen = true;
         continue;
       }
-      /* Optional lines with the digests of the four public tables, DW words each:
+      /* Optional lines with the digests of the public tables, DW words each:
        * verifier/docs/parameter-file.md, "9. Optional lines" and "Digests of the public tables".
-       * tblHeld() compares them. That all four exist is tested after the scan (`polLayout`): here
-       * h is still the parse of the skeleton (`polSkeleton`), in which the word NE is not
-       * written. */
+       * tblHeld() compares them. Which set of tables the model uses (four with experts, three for a
+       * dense model) is tested after the scan (`polLayout`), once the word NE is parsed from the
+       * statement: here h is still the parse of the skeleton (`polSkeleton`), in which NE is not
+       * written. The scan only checks that the lines are well formed and well ordered. */
       if (!strncmp(line, "tsilu", 5) || !strncmp(line, "tsig", 4) || !strncmp(line, "trope", 5) ||
           !strncmp(line, "texp", 4)) {
         static const char *const TB[4] = {"tsilu", "tsig", "trope", "texp"};
@@ -1110,8 +1115,35 @@ static void polScan(PolScan &PS, const string &polB) {
             !polCallsA.empty() || !polCallsH.empty() || !scanned() || val > 0xFFFFFFFFull)
           refuse("policy-tables");
         oneSpelling();
-        if (string(TB[tblAt / DW]) + std::to_string(tblAt % DW) != name) refuse("policy-tables");
-        tblPol[tblAt / DW][tblAt % DW] = (u32)val;
+        // The table index k (0 tsilu, 1 tsig, 2 trope, 3 texp) and the word index w, e.g. "trope3"
+        // is table 2, word 3. A table's words arrive in order 0 .. DW - 1, the tables in ascending
+        // index order, and the FS/SIG table (index 1) may be absent (a dense model). So the lines
+        // cannot be reordered, interleaved or repeated; polLayout() checks the set against NE.
+        int k = -1;
+        size_t pfx = 0;
+        for (int t = 0; t < 4; t++) {
+          const size_t len = strlen(TB[t]);
+          if (!strncmp(name, TB[t], len) && name[len] >= '0' && name[len] <= '9') {
+            k = t;
+            pfx = len;
+            break;
+          }
+        }
+        if (k < 0) refuse("policy-tables");
+        size_t w = 0;
+        const char *p = name + pfx;
+        if (p[0] == '0' && p[1] != 0) refuse("policy-tables"); // one spelling: no leading zero
+        for (; *p; p++) {
+          if (*p < '0' || *p > '9') refuse("policy-tables");
+          w = 10 * w + (size_t)(*p - '0');
+          if (w >= DW) refuse("policy-tables");
+        }
+        if (w != tblCount[k]) refuse("policy-tables"); // contiguous within the table
+        if (w == 0)
+          for (int t = k + 1; t < 4; t++)
+            if (tblCount[t]) refuse("policy-tables"); // a later table has not started yet
+        tblPol[k][w] = (u32)val;
+        tblCount[k]++;
         tblAt++;
         tblPrev = true;
         continue;
@@ -1162,7 +1194,10 @@ static void polScan(PolScan &PS, const string &polB) {
       }
     }
     if (i != nm.size()) refuse("policy-length");
-    if (tblAt != 0 && tblAt != TBLW) refuse("policy-tables");
+    // A table's digest is DW words, all or none; a part of one is never valid. Which tables must be
+    // present is checked in polLayout(), where NE is known.
+    for (int t = 0; t < 4; t++)
+      if (tblCount[t] != 0 && tblCount[t] != DW) refuse("policy-tables");
   }
 }
 /* Tests after the scan, on the statement's words together and on the lines "call"; returns the
@@ -1189,9 +1224,15 @@ static Lay polLayout(PolScan &PS) {
   if ((u32)TAU < statedTarget.hb) refuse("policy-tau-hb");
   for (auto &c : y.calls)
     if (c.c.kappa != 5) refuse("hid-planes-" + c.c.name);
-  // The tables' lines (DW for each of the four) are accepted only if all four tables are computed,
-  // so that every digest is compared: that is with MoE layers.
-  if (PS.tblAt && !h.NE) refuse("policy-tables");
+  // The tables' digest lines, if any are given, must be exactly the set the model uses, so that
+  // every table it uses is compared: all four (SILU, FS/SIG, RoPE, softmax) with experts, and the
+  // three without the FS/SIG table (index 1) for a dense model. A part of this set is already
+  // refused in the scan (each table is 0 or DW words there); here NE decides which set is owed.
+  if (PS.tblAt) {
+    const bool ok = h.NE ? (PS.tblCount[0] == DW && PS.tblCount[1] == DW && PS.tblCount[2] == DW && PS.tblCount[3] == DW)
+                         : (PS.tblCount[0] == DW && PS.tblCount[1] == 0 && PS.tblCount[2] == DW && PS.tblCount[3] == DW);
+    if (!ok) refuse("policy-tables");
+  }
   return y;
 }
 // Requested bits: an integer from 0 to 1,000,000. A program that links this unit passes a double.
@@ -1294,12 +1335,16 @@ static int runStage(const StageInputs &in) {
   CallLines &polCallsH = PS.polCallsH, &polCallsA = PS.polCallsA;
   bool &egSeen = PS.egSeen, &smaxSeen = PS.smaxSeen;
   u32(&tblPol)[4][DW] = PS.tblPol;
+  size_t(&tblCount)[4] = PS.tblCount;
   size_t &tblAt = PS.tblAt;
-  /* The four public tables (see tblPol) are computed with the platform's floating-point library. If
-     the parameter file gives their digests, a table with another digest ends the run before a word
-     of a proof is used: what is proved must not depend on the last bit of a library's result. */
+  /* The public tables (see tblPol) are computed with the platform's floating-point library. If the
+     parameter file gives a table's digest, a table with another digest ends the run before a word
+     of a proof is used: what is proved must not depend on the last bit of a library's result. Each
+     table whose DW digest words were given is compared; a dense model gives three (not the FS/SIG
+     table), an experts model four. polLayout() has already refused any other set, so tblCount[k] is
+     DW exactly when table k is owed and present. */
   auto tblHeld = [&](int k, const u32 *mine, const char *refusal) {
-    if (tblAt == TBLW && memcmp(mine, tblPol[k], 4 * DW)) refuse(refusal);
+    if (tblCount[k] == DW && memcmp(mine, tblPol[k], 4 * DW)) refuse(refusal);
   };
   /* Set after the tests that identify format and commitment: version word, commitment ID (if the
      caller named one), leaf file's table (form). Unset: "internal-naming-first" (`runLinksH`). */
@@ -2395,9 +2440,20 @@ static int runStage(const StageInputs &in) {
         onePlacement = placedAlike(layoutH.find(l, "M" + std::to_string(linksH[l].tl->pxMat[i])),
                                    layoutH.find(0, "M" + std::to_string(linksH[0].tl->pxMat[i])));
     }
+  // A dense model (NE 0) with neither clamp line meets routed-experts and both-clamps: it is the
+  // standard dense parameter form (verifier/docs/parameter-file.md). With experts the two
+  // conditions are unchanged. A clamp line on a dense model is refused earlier (policy-gcl,
+  // policy-rcl), so denseStandard never hides a clamp.
+  const bool denseStandard = h.NE == 0 && !RCL && !GCL;
+  // table-digests is met when the digest set the model uses is complete: four tables with experts,
+  // the three it uses (SILU, RoPE, softmax; not FS/SIG) for a dense model.
+  const bool tablesComplete =
+      h.NE ? tblAt == TBLW
+           : (tblCount[0] == DW && tblCount[1] == 0 && tblCount[2] == DW && tblCount[3] == DW);
   string notServed =
-      servedForm({h.NE > 0, residualStreamLimbs == 5, RCL && GCL, h.toksrc == 1, layoutP != nullptr,
-                    tblAt == TBLW, !egSeen && !smaxSeen, h.Sx < 32, h.D == 2048, oneShift, onePlacement,
+      servedForm({h.NE > 0 || denseStandard, residualStreamLimbs == 5, (RCL && GCL) || denseStandard,
+                    h.toksrc == 1, layoutP != nullptr,
+                    tablesComplete, !egSeen && !smaxSeen, h.Sx < 32, h.D == 2048, oneShift, onePlacement,
                     h.Sx == 12 && h.rx == 8, rotaryServed(h.theta0, dh, h.lt),
                     normShifts, twoCodesH,
                     !ask.nextTokenAsked || ((u64)so.r + 1 == T && so.e == T),
@@ -2450,9 +2506,9 @@ static int runStage(const StageInputs &in) {
     if (RCL) printf("plan: the router's logits are clamped (line rcl)\n");
     if (GCL) printf("plan: the input of the SiLU table is clamped (line gcl)\n");
     if (residualStreamLimbs == 5) printf("plan: a value of the residual stream has five limbs (line xl)\n");
-    if (tblAt == TBLW)
-      printf("plan: this program's four public tables match the parameter file's digests (lines tsilu0 .. texp%u)\n",
-             DW - 1);
+    if (tablesComplete)
+      printf("plan: this program's %s public tables match the parameter file's digests (lines %s)\n",
+             h.NE ? "four" : "three", h.NE ? "tsilu0 .. texp" : "tsilu0, trope and texp");
     // The statement's length in words, and the place of y in it; words are counted from 0.
     printf("statement: %zu words, y at word %zu\n", st.size(), (size_t)(h.hTok - st.data()) + DW);
     printf("h_par=%s\nconfiguration=%s\n", hex64(hParDigest.w).c_str(), hexOfH(configurationH).c_str());

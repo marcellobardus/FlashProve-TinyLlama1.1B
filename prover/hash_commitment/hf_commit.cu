@@ -583,8 +583,12 @@ static int read_shape(const Opt &O, const std::string &policy_file, PolC &PO, rf
     return 2;
   }
   if (int rc = shape.from_policy(PO)) return rc;
-  // A model with experts (NE > 0) has all four public tables: their digests are required. Only the
-  // first of their lines, tsilu0, is looked for here.
+  // A model with experts (NE > 0) uses all four public tables: their digests are required here. A
+  // dense model (NE 0) uses three (SILU, RoPE, softmax; not the FS/SIG table) and carries their
+  // digests to be the standard parameter form, but is not forced to here: a synthetic dense kit
+  // with no digest lines still commits under a test build, and the standard-form check below
+  // (cp-commit-not-standard) stops a production commit of a dense kit that would get no YES. Only
+  // the first digest line, tsilu0, is looked for here.
   if (!PO.m.count("tsilu0") && PO["NE"] > 0)
     return making::refuse("policy-tables-absent", "the parameter file lacks the lines tsilu0 .. texp" + std::to_string(DW - 1) + ", the digests of the four public tables; no prover "
                                                   "serves such a file (scales/policy_tables.py writes the lines)");

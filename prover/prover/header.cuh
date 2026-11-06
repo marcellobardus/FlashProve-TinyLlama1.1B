@@ -39,9 +39,11 @@ inline int Prover::build_header() {
   // must match the tables that this program computes with the machine's floating-point library;
   // otherwise it would prove a different function.
   const bool tables_given = policy.has("tsilu0");
-  // A model with experts (`mo`) uses all four tables and needs the digest lines. The configuration
-  // digest then covers them, and every batch's first key
-  // depends on it (batch_first_key(), prover/common/coin_keys.h). So two machines whose
+  // A model with experts (`mo`) uses all four tables and needs the digest lines. A dense model
+  // (NE 0, !mo) uses three (SILU, RoPE, softmax; not the FS/SIG table): the sigmoid block below is
+  // skipped and its digest slot is written as zeros, and table_fits() checks each of the three when
+  // the lines are given. The configuration digest covers the digest lines, and every batch's first
+  // key depends on it (batch_first_key(), prover/common/coin_keys.h). So two machines whose
   // floating-point libraries differ cannot prove with different tables under the same private
   // randomness.
   if (!tables_given && mo) {

@@ -398,8 +398,11 @@ inline std::string limit_missed(const Parameters &p) {
        "nminH must be above nmin; for nmin itself, leave the line out"},
       {!p.has("smax") || v("smax") == 2047 || v("smax") == 1023 || v("smax") == 511 || v("smax") == 255,
        "policy-gate-table", "smax", "smax must be 2047, 1023, 511 or 255"},
-      {!p.has("tsilu0") || experts, "policy-tables", "tsilu0",
-       "the tables' digest lines need a model with experts"},
+      {!p.has("tsilu0") || experts || NE == 0, "policy-tables", "tsilu0",
+       "the tables' digest lines need a model that uses the public tables (experts, or a dense model)"},
+      // A dense model (NE 0) uses three tables, not the FS/SIG table, so it carries no tsig line.
+      {!p.has("tsig0") || experts, "policy-tables", "tsig0",
+       "a dense model (NE 0) does not use the FS/SIG table, so it has no tsig digest lines"},
       {wide("theta0") != 0, "shape-theta0", "theta0_lo", "theta0 (theta0_lo + 2^32 theta0_hi) must not be 0"},
       {v("KF") + 14 >= v("MF"), "policy-norm-F", "KF", "KF must be at least MF - 14"},
       {wide("epsF") >= 1 && wide("epsF") >> 59 == 0, "policy-norm-F", "epsF_lo",
