@@ -335,12 +335,29 @@ inline int Prover::read_isk() {
 // outside this repository). When it passes, cp_commit writes the line with h_par, the digest of the
 // three configuration files it ran with; under other files the line means nothing. No key protects
 // isk.txt (docs/limits-all-rows.tsv, row H7.1). Under "seed test" (test builds only) the line is
-// not required. Call it after read_inputs(), before the spool directory is opened: a start under
-// changed files then changes nothing there.
+// not required. A production serve of a commitment to public weights (-public-weights, which
+// read_isk() has already paired with isk.txt's "seed public") also does without the line when
+// cp_commit left the check out: nothing is hidden there, so a "failed" that depends on the weights
+// reveals nothing a published-weights client could not compute itself; the line is still honoured
+// when cp_commit ran -worst-case and wrote it. This safeguard is never a verifier check, and a
+// hidden-weight commitment must not become provable without it. Call it after read_inputs(), before
+// the spool directory is opened: a start under changed files then changes nothing there.
 inline int Prover::the_ranges_are_guarded() {
 #ifndef SERVING_BUILD
   if (isk_test_seed) {
     printf("# isk.txt's line ranges is not asked for (isk.txt says \"seed test\"): in this run \"failed\" may depend on the weights\n");
+    return 0;
+  }
+#endif
+#ifdef SERVING_BUILD
+  // -public-weights has already been paired with isk.txt's "seed public" [cp-isk-seed-public]. If
+  // cp_commit left the worst-case check out (no line ranges), serve without one: the weights are
+  // published, so a weight-dependent "failed" hides nothing. A missing line without -public-weights
+  // is not accepted here, below, so a hand-edited isk.txt does not slip a hidden-weight commitment
+  // past the check. A commitment that also ran -worst-case still carries a real line, matched below.
+  if (!args.public_weights.empty() && isk_ranges.empty()) {
+    printf("# isk.txt's line ranges is not asked for (isk.txt says \"seed public\" and -public-weights is given): cp_commit left the worst-case check "
+           "out under public weights, so a request may end \"failed\" if a value leaves its range; nothing is hidden under this commitment\n");
     return 0;
   }
 #endif

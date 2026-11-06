@@ -405,6 +405,11 @@ stopped when idle; GPU pods need Chief of Staff approval first.
   change that skips the check under `-public-weights`, arguable because "Soundness does not rest on it"
   (scales/worst-case-bounds.md:33), but it is a change to a hiding safeguard and needs Marcello. To avoid
   surprises, run cp_commit first thing in the session: it fails before the seed is drawn.
+  - Chosen (2026-11-07, Marcello): option (2). M5c skips the worst-case check under `-public-weights`
+    (unless `-worst-case`/`-worst-case-table` is also given), so a `-public-weights` commit to the existing
+    TL-INT-1 integers finishes without the line `ranges`, and cp_prove given `-public-weights` serves it
+    without one. A request may still end `failed` if a value leaves its range. Hidden-weight commits are
+    unchanged: they always run the check and still refuse to prove without `ranges`.
 
 ### M6. T 1024 and whole replies (H100)
 

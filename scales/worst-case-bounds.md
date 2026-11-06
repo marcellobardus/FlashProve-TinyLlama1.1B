@@ -21,8 +21,10 @@ beside that:
 
 Before `cp_commit` commits, it computes for every site an upper bound on the value there, from the
 committed integers and the public scales alone. It samples no prompt: each bound is meant to hold
-for every prompt. It commits only if every bound is within its site's limit. (A test's call under
-`-test-seed` leaves the check out unless it asks for it.) This page states each bound as the code
+for every prompt. It commits only if every bound is within its site's limit, except where it leaves
+the check out: a test's call under `-test-seed`, or a production call under `-public-weights`, which
+hides nothing (the check is only the hiding safeguard below, so a published-weights commit may skip
+it); either leaves it out unless `-worst-case` or `-worst-case-table` asks for it. This page states each bound as the code
 computes it, with the argument for it. README.md, "Terms", defines site, limit, bits short, shift
 and lookup key; [README.md](README.md) is the guide to the tools around the check.
 

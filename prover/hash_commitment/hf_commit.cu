@@ -124,8 +124,13 @@
 // request is answered "failed": on unchecked weights "failed" would be a bit about the weights at a
 // prompt of the client's choice. When every bounded site (a range test of the forward pass) fits
 // (what that shows and does not: prover/weights_commitment/worst_case.cuh), isk.txt gets the line
-// "ranges <h_par>", which cp_prove requires. Only a call with -test-seed, which no production build
-// has, can omit both: nothing is hidden, and isk.txt says "seed test": only test builds accept it.
+// "ranges <h_par>", which cp_prove requires. The check is only this hiding safeguard; no verifier
+// check rests on it. A call under which nothing is hidden may leave it out, and then writes no line
+// ranges: a call with -test-seed, which no production build has (isk.txt then says "seed test",
+// accepted by test builds only); or, in a production build, a call with -public-weights (isk.txt
+// then says "seed public", and cp_prove given -public-weights starts without the line:
+// Prover::the_ranges_are_guarded()). -worst-case or -worst-case-table forces the check in either
+// case, and a pass then writes the line as usual.
 #include "hash_commitment/hf_commit_derivation_check.cuh" // first: it defines the macro through which the shared headers call it
 #include "common/setting.h"
 #include "weights_commitment/lent_memory.h" // before every header that allocates GPU memory
@@ -997,6 +1002,8 @@ static int cp_commit_main(int argc, char **argv) {
   }
 #ifndef SERVING_BUILD
   if (O.from_weights && !O.worst_case) printf("cp_commit: a test's run: the worst-case check is left out, and isk.txt gets no line ranges\n");
+#else
+  if (O.from_weights && !O.worst_case) printf("cp_commit: -public-weights: the worst-case check is left out, and isk.txt gets no line ranges\n");
 #endif
   static PinnedWeights &weights = *new PinnedWeights;
   weights.joined_cut_bytes = O.piece_bytes;
