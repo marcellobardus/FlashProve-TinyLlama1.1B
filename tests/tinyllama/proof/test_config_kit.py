@@ -99,23 +99,29 @@ def test_kit_is_deterministic_and_copies_the_artifact_scales(tmp_path):
     assert "rcl" not in names
     assert "eg" not in names
     assert "smax" not in names
-    assert not any(name.startswith("tsilu") for name in names)
+    # The three table digests a dense model uses (O3): tsilu, trope, texp, eight words each, in that
+    # order; never tsig (the FS/SIG table), which a dense model does not use.
+    for table_name in ("tsilu", "trope", "texp"):
+        assert all(("%s%d" % (table_name, i)) in names for i in range(8))
     assert not any(name.startswith("tsig") for name in names)
-    assert not any(name.startswith("trope") for name in names)
-    assert not any(name.startswith("texp") for name in names)
 
+    # The call list is built from the digit forms: KL_ROW's shifts kv..kd are 8, so hv, ho, hgD,
+    # huD, hdD are form 0 and the verifier does not expect GH, UH, OH, DH or VH. Only QKH (hq 2) is
+    # present. A high segment named where the verifier does not expect it is the M1 policy-call-list
+    # failure.
     calls = [line.split() for line in lines if line.startswith("call ")]
     assert calls == [
         ["call", "R16a", "R16", "G", "U"],
         ["call", "R16b", "R16", "N1", "N1H", "N2", "N2H", "O", "D", "V"],
         ["call", "R16c", "R16", "QK", "QKH"],
-        ["call", "R8", "R8", "GH", "UH", "OH", "DH", "VH", "ROW"],
+        ["call", "R8", "R8", "ROW"],
         ["call", "FC", "FC", "CN1", "CN2", "CQK", "CV"],
         ["call", "FL", "FL", "F"],
         ["call", "R16d", "R16", "UT"],
     ]
-    for removed in ("XR", "LR", "LT", "DD", "LH", "SEL", "L3", "CLR", "MR", "G0", "CG"):
+    for removed in ("GH", "UH", "OH", "DH", "VH", "XR", "LR", "LT", "DD", "LH", "SEL", "L3", "CLR", "MR", "G0", "CG"):
         assert all(removed not in call[2:] for call in calls)
+    assert values["kFD"] == 14  # computed from u0, dh, the KL attention shift (not the old literal 16)
 
     call_a = [line.split() for line in lines if line.startswith("callA ")]
     assert call_a == [

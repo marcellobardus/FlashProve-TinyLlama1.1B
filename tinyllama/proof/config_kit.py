@@ -75,15 +75,8 @@ LM_FULL = {
     "lmbH": 15,
 }
 
-DENSE_CALLS = (
-    ("R16a", "R16", ("G", "U")),
-    ("R16b", "R16", ("N1", "N1H", "N2", "N2H", "O", "D", "V")),
-    ("R16c", "R16", ("QK", "QKH")),
-    ("R8", "R8", ("GH", "UH", "OH", "DH", "VH", "ROW")),
-    ("FC", "FC", ("CN1", "CN2", "CQK", "CV")),
-    ("FL", "FL", ("F",)),
-    ("R16d", "R16", ("UT",)),
-)
+# The layer sub-proof's call lines are built per kit by _dense_calls(), from the digit forms, so the
+# lines list exactly the lookup segments the verifier expects for that kit's shifts.
 
 CALL_A = (
     ("KR", "KR", ("RM", "RD")),
@@ -240,6 +233,10 @@ def _normalise(params, kl):
     result["epsF"] = eps_f
     result["kl_rows"] = rows
     result["lt"] = params.get("lt", contract.LT)
+    # The artifact's pinned table digests and window, if it gives them (an artifact directory does;
+    # the contract id alone does not). _digest_lines() checks the kit's tables against them.
+    result["digests"] = params.get("digests")
+    result["T"] = params.get("T")
     return result
 
 
@@ -268,6 +265,113 @@ def _digit_form(largest_shift):
     raise KitError("a shift of %d needs a digit form above 2" % largest_shift)
 
 
+# Each matrix product's "high" lookup segment, and the digit-form line (hq, hv, ...) that governs it.
+# The verifier lists the segment only when that form is nonzero, and as kind R8 for form 1 or R16 for
+# form 2 (verifier/src/cp_verify.cpp, the hi() helper of the layer sub-proof's segment list). A dense
+# model has no router or clamp, so no XR/LR/.../G0/CG/MR segment.
+_HIGH_SEGMENTS = (("QKH", "hq"), ("GH", "hgD"), ("UH", "huD"), ("OH", "ho"), ("DH", "hdD"), ("VH", "hv"))
+
+
+CLAMP = 2047  # queries, keys and values are clamped to -CLAMP .. CLAMP (verifier/src/vf_attention_shape.h)
+
+
+def _softmax_length(exp_s, rx):
+    """u0, the length of the softmax table: the first u with round(2^exp_s * exp(-u / 2^rx)) == 0
+    (verifier/src/vf_attention_shape.h). At S 12 rx 8 this is 2307 (contract section 6)."""
+    import math
+
+    u = 0
+    while round(2**exp_s * math.exp(-u / 2**rx)) != 0:
+        u += 1
+        if u > (1 << 20):
+            raise KitError("the softmax table does not end for S %d rx %d" % (exp_s, rx))
+    return u
+
+
+def _nhd(smax, sh):
+    """The number of high-digit entries of the softmax lookup container for an attention shift sh,
+    as verifier/src/vf_attention_shape.h computes it."""
+    rho = 65536 - (1 << sh)
+    return (4 * smax + 1 + rho - 1) // rho
+
+
+def _kfd(values):
+    """kFD: log2 of the rows of the softmax lookup container (line kFD). The container holds u0 high
+    entries plus nHD low ones, so the verifier requires u0 + nHD <= 2^kFD <= u0 + 2 nHD for every
+    attention shift in KL.bin (af-policy-kF). The former hard-coded 16 only fit Maverick's shape."""
+    u0 = _softmax_length(values["S"], values["rx"])
+    smax = values["dh"] * CLAMP * CLAMP
+    shifts = {row[11] for row in values["kl_rows"]}
+    for kfd in range(8, 17):
+        rows = 1 << kfd
+        if all(rows >= u0 + _nhd(smax, sh) and rows - u0 - _nhd(smax, sh) <= _nhd(smax, sh) for sh in shifts):
+            return kfd
+    raise KitError("no kFD in 8 .. 16 fits the softmax table (u0 %d) at the attention shifts %s" % (u0, sorted(shifts)))
+
+
+def _dense_calls(forms):
+    """The layer sub-proof's ``call`` lines for a dense model with these digit forms, each a tuple
+    (name, kind, segments). It covers exactly the segments the verifier expects: the base R16
+    segments, the R8 segment ROW, the FC and FL segments, and each high segment placed by its form
+    (absent for form 0, in an R8 call for form 1, in an R16 call for form 2). This is why the list
+    must follow the artifact's shifts: a high segment named where the verifier does not expect it, or
+    left out where it does, is refused as policy-call-list (the M1 failure)."""
+    r16_high = tuple(seg for seg, line in _HIGH_SEGMENTS if forms[line] == 2)
+    r8_high = tuple(seg for seg, line in _HIGH_SEGMENTS if forms[line] == 1)
+    qkh_r16 = tuple(seg for seg in r16_high if seg == "QKH")
+    r16d = ("UT",) + tuple(seg for seg in r16_high if seg != "QKH")
+    return [
+        ("R16a", "R16", ("G", "U")),
+        ("R16b", "R16", ("N1", "N1H", "N2", "N2H", "O", "D", "V")),
+        ("R16c", "R16", ("QK",) + qkh_r16),
+        ("R8", "R8", r8_high + ("ROW",)),
+        ("FC", "FC", ("CN1", "CN2", "CQK", "CV")),
+        ("FL", "FL", ("F",)),
+        ("R16d", "R16", r16d),
+    ]
+
+
+def _digest_lines(values, lt):
+    """The lines tsilu0..7, trope0..7, texp0..7: the digests of the three public tables a dense model
+    uses (O3), in the ascending table order the verifier's scan requires (no tsig). The digests are
+    computed from the model's own table parameters with tinyllama.convert.tables, the same recipe the
+    artifact pins, so they equal the tables cp_verify recomputes and compares. The rotary table
+    depends on the window T = 2^lt; tsilu and texp do not."""
+    from tinyllama.convert import tables
+
+    window = 1 << lt
+    cosines, sines = tables.rope_tables(window, values["dh"], values["cs"], values["theta0"])
+    exp = tables.softmax_table(values["S"], values["rx"])
+    silu = tables.silu_table(contract.EG, contract.SMAX)
+    digests = {
+        "tsilu": [int(w) for w in tables.table_digest(tables.tsilu_words(silu))],
+        "trope": [int(w) for w in tables.table_digest(tables.trope_words(cosines, sines))],
+        "texp": [int(w) for w in tables.table_digest(tables.texp_words(exp))],
+    }
+    _check_pinned_digests(values, lt, digests)
+    lines = []
+    for table_name in ("tsilu", "trope", "texp"):
+        lines.extend("%s%d %d" % (table_name, i, word) for i, word in enumerate(digests[table_name]))
+    return lines
+
+
+def _check_pinned_digests(values, lt, computed):
+    """If the artifact pinned the table digests, the digests computed for this kit must equal them, so
+    that the committed function uses the artifact's tables (the table-identity guard). tsilu and texp
+    do not depend on the window, so they are always checked; trope is checked only when the kit's
+    window 2^lt matches the artifact's T (otherwise the artifact pinned a different window's rotary
+    table, and the kit legitimately uses another)."""
+    pinned = values.get("digests")
+    if not pinned:
+        return
+    for table_name in ("tsilu", "texp"):
+        if table_name in pinned and [int(w) for w in pinned[table_name]] != computed[table_name]:
+            raise KitError("the %s digest computed for this kit differs from the artifact's" % table_name)
+    if "trope" in pinned and values.get("T") == (1 << lt):
+        if [int(w) for w in pinned["trope"]] != computed["trope"]:
+            raise KitError("the trope digest computed for this kit differs from the artifact's at T %d" % (1 << lt))
+
+
 def _la_for(values, lt):
     candidates = [
         values["d"],
@@ -275,12 +379,17 @@ def _la_for(values, lt):
         values["G"] * values["dh"],
         (values["H"] + values["G"]) * values["dh"],
     ]
+    # 2^(la - lt) must divide d, f, G dh and (H + G) dh (shape-la), and la - lt must be at most
+    # log2(dh) rounded up (af-shape-la, verifier/src/cp_verify.cpp via prover/common/parameter_file.h).
+    # Take the largest step that meets both. At TinyLlama's dh 64 the cap is 6; 2^6 divides the four
+    # widths, so la = lt + 6 (16 at lt 10).
+    cap = min(8, _ceil_log2(values["dh"]))
     delta = 0
-    for step in range(1, 9):
+    for step in range(1, cap + 1):
         if all(value % (1 << step) == 0 for value in candidates):
             delta = step
     if delta == 0:
-        raise KitError("no la above lt makes 2^(la - lt) divide d, f, G dh and (H + G) dh")
+        raise KitError("no la makes 2^(la - lt) divide d, f, G dh and (H + G) dh within la - lt <= log2 dh")
     return min(16, lt + delta)
 
 
@@ -473,6 +582,19 @@ def build_policy(values, kl, lt):
     values["xl"] = 5
     lm = _lm_lines(values)
 
+    # The digit forms decide which high lookup segments the verifier expects, so the call lines are
+    # built from them (see _dense_calls). hq is 2 for every TinyLlama kit (kq can reach 27, which
+    # needs form 2); the rest follow the artifact's largest shift of that kind.
+    forms = {
+        "hq": 2,
+        "hv": _digit_form(largest["kv"]),
+        "ho": _digit_form(largest["ko"]),
+        "hgD": _digit_form(largest["kg"]),
+        "huD": _digit_form(largest["ku"]),
+        "hdD": _digit_form(largest["kd"]),
+    }
+    dense_calls = _dense_calls(forms)
+
     table_line = _table_line(values, table_fields)
     lines = list(frame)
     lines.append(table_line)
@@ -497,12 +619,12 @@ def build_policy(values, kl, lt):
             "cs %d" % values["cs"],
             "theta0_lo %d" % values["theta0"],
             "theta0_hi 0",
-            "hq 2",
-            "hv %d" % _digit_form(largest["kv"]),
-            "ho %d" % _digit_form(largest["ko"]),
-            "hgD %d" % _digit_form(largest["kg"]),
-            "huD %d" % _digit_form(largest["ku"]),
-            "hdD %d" % _digit_form(largest["kd"]),
+            "hq %d" % forms["hq"],
+            "hv %d" % forms["hv"],
+            "ho %d" % forms["ho"],
+            "hgD %d" % forms["hgD"],
+            "huD %d" % forms["huD"],
+            "hdD %d" % forms["hdD"],
             "hr 0",
             "ut 1",
             "la %d" % values["la"],
@@ -531,7 +653,7 @@ def build_policy(values, kl, lt):
             "wb_r 0",
         ]
     )
-    iotas = _layer_iotas(values, DENSE_CALLS)
+    iotas = _layer_iotas(values, dense_calls)
     lines.extend("iota_%d %d" % (index, iotas[index]) for index in range(8))
     lines.extend(
         [
@@ -541,7 +663,7 @@ def build_policy(values, kl, lt):
             "S %d" % values["S"],
             "rx %d" % values["rx"],
             "kFM 15",
-            "kFD 16",
+            "kFD %d" % _kfd(values),
             "lmS %d" % lm["lmS"],
             "NAs %d" % lm["NAs"],
             "lmh %d" % lm["lmh"],
@@ -577,7 +699,10 @@ def build_policy(values, kl, lt):
             "xl 5",
         ]
     )
-    for name, kind, segments in DENSE_CALLS:
+    # The three table digests the dense model uses (O3), directly before the call lines and in the
+    # ascending table order the verifier requires (tsilu, trope, texp; no tsig).
+    lines.extend(_digest_lines(values, lt))
+    for name, kind, segments in dense_calls:
         lines.append("call %s %s %s" % (name, kind, " ".join(segments)))
     for name, kind, segments in CALL_A:
         lines.append("callA %s %s %s" % (name, kind, " ".join(segments)))
