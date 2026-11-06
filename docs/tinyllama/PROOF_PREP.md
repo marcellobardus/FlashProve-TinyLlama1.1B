@@ -428,7 +428,7 @@ Expected after the fix, to be recorded only once the run is done:
   `no-proof-of-work` if the test bits print it. No other cause, and no YES (a dense YES needs the
   verifier policy change O1 / T4.3, which is not in this branch).
 
-A recorded proof from the 2026-11-06 kg=17 confirm lives in `docs/tinyllama/recorded/t23-dense-kg17/` (proof, y, kit, rebuilt request, commitment ID). The `ivk/` from that commit was not copied off the pod, so that exact file cannot be verified without it. See that directory's README.
+A recorded proof from the 2026-11-06 kg=17 confirm, including `ivk/`, lives in `docs/tinyllama/recorded/t23-dense-kg17/`. You can run `cp_verify` on that package without running `cp_commit` or `cp_prove`. See that directory's README.
 
 The pod harness that samples GPU memory and times each step is
 `work/pod_reports/2026-11-06-m2/scripts/run_dense_once.sh`; the facts above do not need it. That
