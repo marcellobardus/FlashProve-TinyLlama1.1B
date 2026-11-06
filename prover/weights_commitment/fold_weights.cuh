@@ -64,6 +64,8 @@
 // fold_rule.h, value8().
 #pragma once
 #include "weights_commitment/gguf_file.h"
+#include <cmath>
+#include <cstring>
 #include <cuda_fp16.h>
 
 namespace fold {
@@ -171,19 +173,34 @@ __global__ void integers(const uint8_t *bytes, uint32_t type, uint64_t first, ui
     w[i] = (Int)x;
   }
 }
-// The norm whose gains multiply a tensor ("": none), and c_0, the c of gains(): sqrt(d) / 64,
-// for attn_q also divided by sqrt(dh); right only for width d = 5,120 and head dimension dh = 128.
+// c_0, the c of gains(), as a binary32 bit pattern: FlashProve's general rule (scales/README.md,
+// "The constants of a norm"). With t the largest integer with 4^t <= d, c = sqrt(d) / 2^t (so
+// 1 <= c < 2); c_0 = RN32(c), and for a query matrix c_q = RN32(c / sqrt(dh)) carries attention's
+// scale 1 / sqrt(dh). At d 5,120 dh 128 these are 0x3F8F1BBD and 0x3DCA62C2, at d 2,048 dh 64
+// 0x3FB504F3 and 0x3E3504F3 (docs/tinyllama/ARITHMETIC_CONTRACT.md 4.3). This generalizes the
+// former literals, which were right for d 5,120 and dh 128 only.
+inline uint32_t fold_c_word(uint64_t d, uint64_t dh, bool query) {
+  int t = 0;
+  while ((uint64_t)1 << (2 * (t + 1)) <= d) ++t; // 4^(t+1) <= d
+  const double c = std::sqrt((double)d) / (double)((uint64_t)1 << t);
+  const float f = query ? (float)(c / std::sqrt((double)dh)) : (float)c;
+  uint32_t w;
+  std::memcpy(&w, &f, sizeof w);
+  return w;
+}
+// The norm whose gains multiply a tensor ("": none), and c_0 (c_q for attn_q), for a model of this
+// width d and head dimension dh.
 struct Reads {
   const char *norm;
   uint32_t c_word;
 };
-inline Reads reads(const std::string &kind) {
-  if (kind == "attn_q") return {"attn_norm", 0x3DCA62C2u};
-  if (kind == "attn_k" || kind == "attn_v") return {"attn_norm", 0x3F8F1BBDu};
+inline Reads reads(const std::string &kind, uint64_t d, uint64_t dh) {
+  if (kind == "attn_q") return {"attn_norm", fold_c_word(d, dh, true)};
+  if (kind == "attn_k" || kind == "attn_v") return {"attn_norm", fold_c_word(d, dh, false)};
   for (const char *k :
        {"ffn_gate", "ffn_up", "ffn_gate_inp", "ffn_gate_shexp", "ffn_up_shexp", "ffn_gate_exps", "ffn_up_exps"})
-    if (kind == k) return {"ffn_norm", 0x3F8F1BBDu};
-  if (kind == "output") return {"output_norm", 0x3F8F1BBDu};
+    if (kind == k) return {"ffn_norm", fold_c_word(d, dh, false)};
+  if (kind == "output") return {"output_norm", fold_c_word(d, dh, false)};
   return {"", 0};
 }
 

@@ -133,8 +133,11 @@ struct FoldSource {
   // descriptor (gguf::Model::open_folder(), gguf_file.h). Exits with code 2 if it rejects a file.
   void open(const std::string &setup) {
     file.open_folder(setup);
-    if (file.embedding_length != 5120 || file.key_length != 128) {
-      fprintf(stderr, "the two constants of the conversion to integers are valid only for d = 5,120 and dh = 128\n");
+    // The conversion's two constants are a function of the width and head dimension
+    // (fold::fold_c_word in fold_weights.cuh), so any positive whole width and head dimension are
+    // read; the parameter file's shape check ties the model to its policy.
+    if (file.embedding_length < 1 || file.key_length < 1) {
+      fprintf(stderr, "the model's width and head dimension must each be at least 1\n");
       exit(2);
     }
     FILE *f = file.side("wsums.txt");

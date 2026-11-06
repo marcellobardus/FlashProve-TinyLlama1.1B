@@ -298,29 +298,45 @@ class _Kind:
     stream: int  # the prover's index for this kind of tensor, also used by the synthetic model
     tensor: str  # the tensor's name in a GGUF file, without "blk.<layer>." and ".weight"
     norm: str | None = None  # the norm whose gains are multiplied into the matrix
-    # c_0, the constant that multiplies the gains, as the bits of a float32 number.
-    constant: int = 0
+    # True if the matrix uses c_q (c_0 divided by sqrt(dh), carrying attention's scale); only the
+    # query matrix does. A matrix with no norm uses no constant.
+    query: bool = False
 
 
-# The two values of c_0. d is the model's width and dh is the head dimension.
-_C0 = 0x3F8F1BBD  # RN32(sqrt(d) / 64) for d = 5,120
-_C0_QUERY = 0x3DCA62C2  # RN32(sqrt(d) / 64 / sqrt(dh)) for d = 5,120 and dh = 128
+def _fold_constants(width: int, head_dimension: int) -> tuple[int, int]:
+    """The gain-folding constants (c_0, c_q) as float32 bit patterns, for a model of this width and
+    head dimension, by FlashProve's own rule (scales/README.md, "The constants of a norm"): with t
+    the largest integer with 4^t <= width, c = sqrt(width) / 2^t (so 1 <= c < 2), c_0 = RN32(c) and
+    c_q = RN32(c / sqrt(head_dimension)). At width 5,120 head 128 these are 0x3F8F1BBD and
+    0x3DCA62C2; at 2,048 and 64 they are 0x3FB504F3 and 0x3E3504F3 (sqrt(2), sqrt(2) / 8;
+    docs/tinyllama/ARITHMETIC_CONTRACT.md 4.3). This generalizes the former literals, which were
+    right for width 5,120 and head 128 only."""
+    t = 0
+    while 4 ** (t + 1) <= width:
+        t += 1
+    c = math.sqrt(width) / (2**t)
+
+    def bits(value: float) -> int:  # the float32 bit pattern of value, rounded to nearest, ties to even
+        return struct.unpack("<I", struct.pack("<f", value))[0]
+
+    return bits(c), bits(c / math.sqrt(head_dimension))
+
 
 # The keys are the names of WeightSource.matrix, and "Emb" for the embedding.
 _KINDS = {
-    "Wq": _Kind(2, "attn_q", "attn_norm", _C0_QUERY),
-    "Wk": _Kind(3, "attn_k", "attn_norm", _C0),
-    "Wv": _Kind(4, "attn_v", "attn_norm", _C0),
+    "Wq": _Kind(2, "attn_q", "attn_norm", query=True),
+    "Wk": _Kind(3, "attn_k", "attn_norm"),
+    "Wv": _Kind(4, "attn_v", "attn_norm"),
     "Wo": _Kind(5, "attn_output"),
-    "Wg": _Kind(6, "ffn_gate", "ffn_norm", _C0),
-    "Wu": _Kind(7, "ffn_up", "ffn_norm", _C0),
+    "Wg": _Kind(6, "ffn_gate", "ffn_norm"),
+    "Wu": _Kind(7, "ffn_up", "ffn_norm"),
     "Wd": _Kind(8, "ffn_down"),
-    "Wr": _Kind(9, "ffn_gate_inp", "ffn_norm", _C0),
-    "Wgr": _Kind(10, "ffn_gate_exps", "ffn_norm", _C0),
-    "Wur": _Kind(11, "ffn_up_exps", "ffn_norm", _C0),
+    "Wr": _Kind(9, "ffn_gate_inp", "ffn_norm"),
+    "Wgr": _Kind(10, "ffn_gate_exps", "ffn_norm"),
+    "Wur": _Kind(11, "ffn_up_exps", "ffn_norm"),
     "Wdr": _Kind(12, "ffn_down_exps"),
     "Emb": _Kind(13, "token_embd"),
-    "Wh": _Kind(14, "output", "output_norm", _C0),
+    "Wh": _Kind(14, "output", "output_norm"),
 }
 _ROUTED = ("Wgr", "Wur", "Wdr")
 
@@ -596,13 +612,9 @@ class GgufBlocks:
                     metadata.get(prefix + "block_count"),
                 )
                 head = metadata.get(prefix + "attention.key_length", 128)
-                # As in _read_shard, the values are not printed.
-                if (width, head) != (5120, 128):
-                    raise WeightsRejected(
-                        f"{shard}: the metadata do not give width 5,120 and head dimension 128. "
-                        "The conversion rule is defined only for these. This must be the model's "
-                        "first file, which holds the metadata."
-                    )
+                # As in _read_shard, the values are not printed. The conversion rule's constants are
+                # a function of the width and head dimension (_fold_constants), so any shape that
+                # matches the parameter file is accepted; the parameter file's own checks bound dh.
                 if (width, head, layers) != (p.d, p.dh, p.L):
                     raise WeightsRejected(
                         f"{shard}: the model's number of layers, width and head dimension are not "
@@ -783,7 +795,8 @@ class GgufBlocks:
             return None
         stored = torch.empty(4 * self._p.d, dtype=torch.uint8)
         self._read(self._tensors[norm], 0, 4 * self._p.d, stored)
-        constant = torch.tensor([_KINDS[name].constant], dtype=torch.int32).view(torch.float32)
+        c0, cq = _fold_constants(self._p.d, self._p.dh)
+        constant = torch.tensor([cq if _KINDS[name].query else c0], dtype=torch.int32).view(torch.float32)
         return stored.view(torch.float32) * constant
 
     def blocks(self, name: str, layer: int | None, rows: range) -> torch.Tensor:
