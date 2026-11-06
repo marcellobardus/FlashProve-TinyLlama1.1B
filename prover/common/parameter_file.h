@@ -180,17 +180,25 @@ inline std::string parse(const std::string &bytes, Parameters &p) {
   if (!optional_line("lidb") || (p.has("lidb") && !optional_line("nminH"))) return why;
   for (const char *name : {"eg", "smax", "rcl", "gcl", "xl"})
     if (!optional_line(name)) return why;
-  // Each of the four public tables' digests takes DW lines: TBLW = 4 DW (prover/common/setting.h).
-  const bool tables = value_line("tsilu0", ""); // public tables' digests: all TBLW lines or none
+  // Digests of the public tables: DW lines each. With experts, four tables (tsilu, tsig, trope,
+  // texp); for a dense model (NE 0), three (tsilu, trope, texp) — the FS/SIG table is absent. The
+  // set is checked again in limit_missed (policy-tables). Matches the verifier's table-aware scan
+  // (cp_verify.cpp polSkeleton / polLayout).
+  const bool tables = value_line("tsilu0", ""); // digests begin with tsilu0, or none
   if (!why.empty()) return why;
-  for (int i = 1; tables && i < TBLW; i++)
-    if (!value_line(std::string(i < DW       ? "tsilu"
-                                : i < 2 * DW ? "tsig"
-                                : i < 3 * DW ? "trope"
-                                             : "texp") +
-                        std::to_string(i % DW),
-                    "policy-tables"))
-      return why;
+  if (tables) {
+    for (int i = 1; i < DW; i++)
+      if (!value_line("tsilu" + std::to_string(i), "policy-tables")) return why;
+    // NE is already among the fixed value lines.
+    if (p.m["NE"] > 0) {
+      for (int i = 0; i < DW; i++)
+        if (!value_line("tsig" + std::to_string(i), "policy-tables")) return why;
+    }
+    for (int i = 0; i < DW; i++)
+      if (!value_line("trope" + std::to_string(i), "policy-tables")) return why;
+    for (int i = 0; i < DW; i++)
+      if (!value_line("texp" + std::to_string(i), "policy-tables")) return why;
+  }
   int kinds_begun = 0; // 1: a call line has been read; 2: a callA line; 3: a callH line
   for (; next < text.size(); next++) {
     Parameters::Call words(1);
