@@ -291,3 +291,107 @@ curl -s -H "Authorization: Bearer $RUNPOD_API_KEY" \
 
 Record the start and stop times and the pod minutes.  Do not print the key, and do not leave the pod
 running for a later step.
+
+## M2 dense synthetic proof: cause of the UNFIT failure and how to confirm the fix
+
+Status: 2026-11-06, work item M2 (PROVING_PLAN "M2. Dense synthetic proofs"). The 2026-11-06 H100
+session reached the dense kit but cp_prove wrote an empty `example.failed` instead of a proof, with
+the line `seat 0, request example: failed: cause 2, flags 00000020`. Cause 2 is `End::Refused` and
+flags 0x20 is `UNFIT`: a forward-pass value left its range (prover/prover/ends.h:49,
+prover/common/slot_flags.h). This section records the cause, the one-line code fix, and the exact
+commands to confirm T2.3 on the next H100. Nothing below is a measured proof; the GPU run has not
+been repeated.
+
+### Root cause
+
+A model with `NE 0` is dense at every layer (docs/model.md; PROVING_PLAN M2, section 3). The rest of
+the prover already reads it that way: `mo = NE > 0` in prover/prover/inputs.cuh:237 and
+prover/weights_commitment/kernels.cuh:108, and the verifier uses `MOE = NE > 0` in
+verifier/src/vf_weights_layout.h:28,39. Only the forward pass disagreed. It picked the
+mixture-of-experts path from `moe_at_layer(prof, l)`, which was `prof >= 3 && (l & 1)` and never
+looked at `NE` (prover/prover/layout.h). So at `NE 0` with the whole-model profile `prof 20` the
+forward pass still ran `ffn_moe()` on the odd layers (prover/prover/forward.cuh:1558), against an
+all-dense layout whose router and clamp segments the dense kit had removed. The router kernels then
+launched over `T * NE = 0` threads and left the logits unwritten, `k_route()` chose a nonexistent
+expert and a stray score, and a forward-pass value left its range, which set `UNFIT`. The MoE
+control kit has `NE > 0`, so its routing is well defined and it proved. `served_form_test.py` only
+runs the verifier's planning calls on a dense kit, never cp_prove, so this path had never run.
+
+### The fix
+
+`moe_at_layer()` now takes `NE` and returns `prof >= 3 && (l & 1) && NE > 0`
+(prover/prover/layout.h), and its two call sites pass the shape's `NE`
+(prover/prover/forward.cuh:108 and :1558). With `NE 0` every layer is now dense in the forward pass
+too, matching the committer, the hiding stage and the verifier. The CPU test
+`prover/tests/moe_at_layer_test.cpp` (target `moe_at_layer_test` in prover/build.sh) pins this.
+
+### Building the dense kit off the pod
+
+`tinyllama/proof/make_dense_kit.py` writes the dense kit from a base MoE kit, with the same transform
+as `served_form_test.py`'s no_experts case. The M2 stand-in derives from
+prover/tests/configurations/pinned (L 8, ll 2, lt 6 so T 64, d 512), giving the same shape with
+`NE 0`. With a built cp_verify it also writes layout.txt:
+
+```sh
+python3 -m tinyllama.proof.make_dense_kit \
+  --base prover/tests/configurations/pinned \
+  --out  /tmp/dense-kit \
+  --cp-verify /path/to/cp_verify
+```
+
+`cp_verify -plan arrays` on this kit is expected to exit 4 (the planner refuses the dense form; that
+is the input to pack_layout, not a failure). The tiny shape of PROVING_PLAN T2.3 (L 2, d 64, T 64)
+is still refused by the planner (shape-la, shape-call-H-R16a, prover-only-D at D 32); the L 8 d 512
+stand-in is used instead and is a legitimate small dense shape. Do not loosen those shape checks for
+this run.
+
+### Confirming T2.3 on the next H100 (test build only, no FlashProve edit beyond this branch)
+
+Run from the repository root on an H100 host that meets prover/docs/build.md (driver 580 or later,
+`madvise(MADV_WIPEONFORK)`, SHA extensions). This uses the test build, which carries the fix.
+
+```sh
+# 1. test programs: cp_commit, cp_prove, cp_verify with the test options
+cd prover && ./build.sh tests && cd ..
+BUILD=prover/build/hc/test_build        # OUT defaults to prover/build
+
+# 2. the host CPU regression test for the fix (exit 0, all checks "as wanted")
+cd prover && ./build.sh moe_at_layer_test && cd ..
+prover/build/*/moe_at_layer_test        # the path build.sh prints
+
+# 3. the dense kit with layout.txt
+python3 -m tinyllama.proof.make_dense_kit \
+  --base prover/tests/configurations/pinned --out /tmp/dense-kit \
+  --cp-verify "$BUILD/cp_verify"
+
+# 4. commit, prove and verify on synthetic (made-up) weights, test seed and test bits
+WORK=/tmp/dense-run
+mkdir -p "$WORK/config" "$WORK/ivk" "$WORK/isk" "$WORK/in" "$WORK/out"
+cp /tmp/dense-kit/policy.txt /tmp/dense-kit/KL.bin /tmp/dense-kit/layout.txt "$WORK/config/"
+head -c 32 /dev/zero > "$WORK/seed"
+python3 -I -B prover/tools/make_request.py "$WORK/config/policy.txt" "$WORK/in/example.req"
+
+"$BUILD/cp_commit" -weights made-up-blocks -config "$WORK/config" -M 1 \
+  -ivk "$WORK/ivk" -isk "$WORK/isk" -test-seed "$WORK/seed" -test-bits 32
+ID=$("$BUILD/cp_commit" -weights made-up-blocks -config "$WORK/config" -M 1 \
+  -ivk "$WORK/ivk" -isk "$WORK/isk" -test-seed "$WORK/seed" -test-bits 32 2>/dev/null \
+  | sed -n 's/^commitment ID: //p' | tr -d ' ')   # or read it from the first call's log
+
+"$BUILD/cp_prove" -isk "$WORK/isk" -in "$WORK/in" -out "$WORK/out"
+
+"$BUILD/cp_verify" "$WORK/config" "$WORK/ivk" "$WORK/in/example.req" \
+  "$WORK/out/example.y" "$WORK/out/example.proof" -id "$ID"
+```
+
+Expected after the fix, to be recorded only once the run is done:
+
+- cp_commit exits 0 and prints a `commitment ID`.
+- cp_prove writes `example.proof` and `example.y` into `$WORK/out`, and no `example.failed`. The
+  earlier line `seat 0, request example: failed: cause 2, flags 00000020` must not appear.
+- cp_verify exits 14 and prints `NOT-A-VERIFICATION` with the line `not the standard parameter form:`
+  listing only the dense items (`routed-experts`, `both-clamps`, `table-digests`), plus
+  `no-proof-of-work` if the test bits print it. No other cause, and no YES (a dense YES needs the
+  verifier policy change O1 / T4.3, which is not in this branch).
+
+The pod harness that samples GPU memory and times each step is
+`work/pod_reports/2026-11-06-m2/scripts/run_dense_once.sh`; the facts above do not need it.
