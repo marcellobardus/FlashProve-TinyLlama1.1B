@@ -7,6 +7,12 @@ define as "every layer dense". served_form_test only runs the verifier's plannin
 kit; this script also writes layout.txt so cp_commit and cp_prove can run it on a GPU (see
 docs/tinyllama/PROOF_PREP.md for the H100 commands).
 
+Beyond served_form_test's policy transform, this script raises kg (the gating shift) in KL.bin, which
+the verifier's planning calls do not exercise but the prover's forward pass does. A dense model has
+no gate clamp, so the gating quotient must fit the SiLU key window without one; the base kit's kg is
+calibrated for the clamp and is too small, so under made-up-blocks weights the forward pass fails
+UNFIT. See roomy_gate() and GATE_SHIFT_HEADROOM.
+
 The dense standard form is deliberately *not* a verification: cp_verify reports it is "not the
 standard parameter form (routed-experts, both-clamps, table-digests)" and ends at status 14. That is
 the expected and only acceptable verifier outcome until the dense standard form (O1 / T4.3) lands.
@@ -29,6 +35,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -47,6 +54,24 @@ MOE_SEGMENTS = ("XR", "LR", "LT", "DD", "LH", "SEL", "L3", "CLR", "MR", "G0", "C
 # The weight-bit-width lines of the router and the shared and routed experts.
 EXPERT_WB = ("wb_gs", "wb_us", "wb_gr", "wb_ur", "wb_dnr", "wb_r")
 KL_WORDS_PER_LAYER = 13  # KLW: a dense layer's quantization-scale record
+# The word index of kg, the gating projection's right-shift, within a layer's 13-word record. The
+# order is kq, kk, kv, ko, kg, ku, kd, M1, K1, M2, K2, sh, rp (LayerScaleSet in
+# prover/prover/forward.cuh; served_form_test.with_word fixes words 7 to 11).
+KG_INDEX = 4
+# A dense (NE 0) model has no gate clamp: no_experts() removes the line gcl with the experts. Without
+# the clamp, the gating projection's quotient q = round(gate_acc / 2^kg) must land in the SiLU key
+# window [-32768, 32639] on its own (gate_key() in prover/prover/forward.cuh, called with gcl off). A
+# clamped gate only needs |q| < 2^22, because its high part gh is clamped to +-127 and gate_key then
+# tolerates h in [-16384, 16383]. The base MoE kit's kg (9 in prover/tests/configurations/pinned) is
+# calibrated for the clamp, so under made-up-blocks weights q leaves the window and the forward pass
+# fails UNFIT with the bit E_GI (prover/prover/forward.cuh, flag 0x20 in slot_flags.h). Raising kg by
+# this many bits divides q by 2^8: the clamp headroom is about 2^22 and the window about 2^15, so +7
+# reaches the window and +8 clears the 32639 < 2^15 upper edge with margin. This is a roomier scale,
+# allowed for a synthetic proof; it disables no range check.
+GATE_SHIFT_HEADROOM = 8
+# The largest shift each gate digit form (the line hgD) allows: layer_words_fit() in
+# prover/prover/forward.cuh refuses kg above 16 (form 0), 24 (form 1) or 32 (form 2).
+GATE_SHIFT_MAX = {0: 16, 1: 24, 2: 32}
 
 
 def read_lines(path):
@@ -100,6 +125,24 @@ def no_experts(lines):
     return forest_fitted(segments_out(lines, *MOE_SEGMENTS))
 
 
+def roomy_gate(scales, layers, lines):
+    """KL.bin's bytes with each layer's kg (the gating shift) raised by GATE_SHIFT_HEADROOM, capped at
+    the gate digit form's maximum shift. A dense model has no gate clamp, so kg must be large enough
+    that the gating quotient fits the SiLU key window without one (see GATE_SHIFT_HEADROOM). Returns
+    (bytes, capped): capped is True if the cap kept kg below the wanted value for any layer, which
+    leaves the forward pass at risk of UNFIT."""
+    form = number_of(lines, "hgD")
+    cap = GATE_SHIFT_MAX[form]
+    words = list(struct.unpack("<%dI" % (len(scales) // 4), scales))
+    capped = False
+    for layer in range(layers):
+        at = KL_WORDS_PER_LAYER * layer + KG_INDEX
+        want = words[at] + GATE_SHIFT_HEADROOM
+        words[at] = min(want, cap)
+        capped = capped or words[at] < want
+    return struct.pack("<%dI" % len(words), *words), capped
+
+
 def number_of(lines, name):
     for ln in lines:
         w = ln.split(" ")
@@ -124,13 +167,20 @@ def main():
     # scales[: 4 * 13 * layers]).
     layers = number_of(lines, "L")
     scales = scales[: 4 * KL_WORDS_PER_LAYER * layers]
+    # A dense model has no gate clamp, so raise kg for the gating quotient to fit the SiLU key window.
+    scales, capped = roomy_gate(scales, layers, lines)
+    if capped:
+        print("make_dense_kit: warning: the gate digit form (hgD) capped kg below kg + %d; the dense "
+              "forward pass may still fail UNFIT (raise hgD or lower GATE_SHIFT_HEADROOM)" % GATE_SHIFT_HEADROOM,
+              file=sys.stderr)
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     write_lines(out / "policy.txt", lines)
     with open(out / "KL.bin", "wb") as f:
         f.write(scales)
-    print("make_dense_kit: wrote %s/policy.txt and KL.bin (NE 0, L %d)" % (out, layers))
+    print("make_dense_kit: wrote %s/policy.txt and KL.bin (NE 0, L %d, kg raised by %d for the dense "
+          "gate)" % (out, layers, GATE_SHIFT_HEADROOM))
 
     if not args.cp_verify:
         print("make_dense_kit: no --cp-verify; skipped the planning call and layout.txt")

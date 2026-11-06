@@ -6,6 +6,7 @@ router and clamp lookup segments removed from the layer call lines. The result d
 pinned MoE kit (prover/tests/configurations/pinned) and keeps its shape (L 8).
 """
 
+import struct
 from pathlib import Path
 
 from tinyllama.proof import make_dense_kit
@@ -17,6 +18,11 @@ MOE_SEGMENTS = {"XR", "LR", "LT", "DD", "LH", "SEL", "L3", "CLR", "MR", "G0", "C
 
 def _values(lines):
     return {w[0]: int(w[1]) for w in (x.split(" ") for x in lines) if len(w) == 2 and w[1].lstrip("-").isdigit()}
+
+
+def _kg_per_layer(scales, layers):
+    words = struct.unpack("<%dI" % (len(scales) // 4), scales)
+    return [words[make_dense_kit.KL_WORDS_PER_LAYER * l + make_dense_kit.KG_INDEX] for l in range(layers)]
 
 
 def _dense_lines():
@@ -60,6 +66,48 @@ def test_moe_segments_removed_and_no_empty_call():
         assert MOE_SEGMENTS.isdisjoint(segments), ln
 
 
+def test_gate_shift_raised_for_the_clampless_dense_gate():
+    # A dense model has no gate clamp, so kg must be large enough that the gating quotient fits the
+    # SiLU key window on its own. roomy_gate() raises each layer's kg by GATE_SHIFT_HEADROOM.
+    lines = _dense_lines()
+    layers = _values(lines)["L"]
+    base = _kg_per_layer((PINNED / "KL.bin").read_bytes(), layers)
+    raised, capped = make_dense_kit.roomy_gate(
+        (PINNED / "KL.bin").read_bytes()[: 4 * make_dense_kit.KL_WORDS_PER_LAYER * layers], layers, lines
+    )
+    assert not capped  # pinned's hgD 1 allows kg up to 24, and 9 + 8 = 17 is below it
+    assert _kg_per_layer(raised, layers) == [k + make_dense_kit.GATE_SHIFT_HEADROOM for k in base]
+    # The raised kg stays within the gate digit form's maximum, so the prover accepts it.
+    form = _values(lines)["hgD"]
+    assert all(k <= make_dense_kit.GATE_SHIFT_MAX[form] for k in _kg_per_layer(raised, layers))
+
+
+def test_gate_shift_only_touches_kg():
+    # roomy_gate() changes word KG_INDEX of each layer and no other scale word.
+    lines = _dense_lines()
+    layers = _values(lines)["L"]
+    scales = (PINNED / "KL.bin").read_bytes()[: 4 * make_dense_kit.KL_WORDS_PER_LAYER * layers]
+    raised, _ = make_dense_kit.roomy_gate(scales, layers, lines)
+    before = struct.unpack("<%dI" % (len(scales) // 4), scales)
+    after = struct.unpack("<%dI" % (len(raised) // 4), raised)
+    for i, (b, a) in enumerate(zip(before, after)):
+        is_kg = i % make_dense_kit.KL_WORDS_PER_LAYER == make_dense_kit.KG_INDEX
+        assert (b != a) == is_kg or b == a, i
+
+
+def test_gate_shift_capped_at_the_digit_form_max():
+    # When kg + headroom would exceed the digit form's maximum shift, roomy_gate() caps it and flags.
+    form = 1  # hgD 1 -> maximum shift 24
+    lines = ["hgD %d" % form]
+    layers = 1
+    high = make_dense_kit.GATE_SHIFT_MAX[form] - 1  # 23; 23 + 8 = 31 is above the cap
+    scales = struct.pack("<%dI" % make_dense_kit.KL_WORDS_PER_LAYER,
+                         *([0] * make_dense_kit.KG_INDEX + [high] + [0] * (make_dense_kit.KL_WORDS_PER_LAYER - make_dense_kit.KG_INDEX - 1)))
+    raised, capped = make_dense_kit.roomy_gate(scales, layers, lines)
+    assert capped
+    assert _kg_per_layer(raised, layers) == [make_dense_kit.GATE_SHIFT_MAX[form]]
+
+
 def test_main_writes_kit(tmp_path, monkeypatch):
     out = tmp_path / "dense"
     monkeypatch.setattr(
@@ -73,3 +121,8 @@ def test_main_writes_kit(tmp_path, monkeypatch):
     # KL.bin keeps one 13-word (52-byte) record per layer and no expert words.
     layers = values["L"]
     assert (out / "KL.bin").stat().st_size == 4 * make_dense_kit.KL_WORDS_PER_LAYER * layers
+    # The written KL.bin carries the raised gate shift for the clampless dense gate.
+    base = _kg_per_layer((PINNED / "KL.bin").read_bytes(), layers)
+    assert _kg_per_layer((out / "KL.bin").read_bytes(), layers) == [
+        k + make_dense_kit.GATE_SHIFT_HEADROOM for k in base
+    ]

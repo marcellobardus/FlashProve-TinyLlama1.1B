@@ -298,11 +298,13 @@ Status: 2026-11-06, work item M2 (PROVING_PLAN "M2. Dense synthetic proofs"). Th
 session reached the dense kit but cp_prove wrote an empty `example.failed` instead of a proof, with
 the line `seat 0, request example: failed: cause 2, flags 00000020`. Cause 2 is `End::Refused` and
 flags 0x20 is `UNFIT`: a forward-pass value left its range (prover/prover/ends.h:49,
-prover/common/slot_flags.h). This section records the cause, the one-line code fix, and the exact
-commands to confirm T2.3 on the next H100. Nothing below is a measured proof; the GPU run has not
-been repeated.
+prover/common/slot_flags.h). There were two causes, found one after the other. The first was a code
+bug in `moe_at_layer()`; a short H100 confirm of that fix on 2026-11-06 hit the same `UNFIT`, which
+exposed the second, a too-tight gate scale in the kit. This section records both causes, their
+fixes, and the exact commands to confirm T2.3 on the next H100. Nothing below is a measured proof;
+the GPU run that produces a dense proof file has not yet succeeded.
 
-### Root cause
+### First cause (code): the forward pass ran the MoE path at NE 0
 
 A model with `NE 0` is dense at every layer (docs/model.md; PROVING_PLAN M2, section 3). The rest of
 the prover already reads it that way: `mo = NE > 0` in prover/prover/inputs.cuh:237 and
@@ -317,7 +319,7 @@ expert and a stray score, and a forward-pass value left its range, which set `UN
 control kit has `NE > 0`, so its routing is well defined and it proved. `served_form_test.py` only
 runs the verifier's planning calls on a dense kit, never cp_prove, so this path had never run.
 
-### The fix
+### The fix for the first cause
 
 `moe_at_layer()` now takes `NE` and returns `prof >= 3 && (l & 1) && NE > 0`
 (prover/prover/layout.h), and its two call sites pass the shape's `NE`
@@ -325,12 +327,41 @@ runs the verifier's planning calls on a dense kit, never cp_prove, so this path 
 too, matching the committer, the hiding stage and the verifier. The CPU test
 `prover/tests/moe_at_layer_test.cpp` (target `moe_at_layer_test` in prover/build.sh) pins this.
 
+### Second cause (kit scale): the dense gate has no clamp, so kg must be larger
+
+With the code fixed, the 2026-11-06 confirm ran `ffn_dense()` on every layer and hit the same
+`UNFIT`. The cause is the gating scale. A dense kit removes the line `gcl` with the experts
+(no_experts() drops it, as `served_form_test.py` does), so the gate has no clamp. Without the clamp
+the gating projection's quotient `q = round(gate_acc / 2^kg)` must land in the SiLU key window
+`[-32768, 32639]` on its own (`gate_key()` with `gcl` off, prover/prover/forward.cuh:497-508, and the
+flag `E_GI`). A clamped gate only needs `|q| < 2^22`: its high part `gh` is clamped to `+-127`, so
+`gate_key()` tolerates `h` in `[-16384, 16383]` (the `16384 : 32768` split at forward.cuh:1345). Every
+base kit, including the roomy ones, sets `kg 9` with `gcl 1`
+(prover/tests/configurations/pinned and prover/examples/target_small_f2_roomy). At `kg 9` under
+made-up-blocks weights the gate quotient needs the clamp, so once the dense kit removes it `q` leaves
+the window and the forward pass sets `UNFIT`. `served_form_test.py` only runs the verifier's planning
+calls, which never evaluate a gate quotient, so this too had never run before the GPU.
+
+### The fix for the second cause
+
+`make_dense_kit.py` now raises `kg` in `KL.bin` for every layer by `GATE_SHIFT_HEADROOM` (8 bits),
+capped at the gate digit form's maximum shift (`roomy_gate()`). Dividing `q` by `2^8` brings the
+clamp headroom (about `2^22`) below the window (about `2^15`) with margin over the `32639 < 2^15`
+upper edge; for the pinned base `kg` goes from 9 to 17, inside the `hgD 1` limit of 24
+(layer_words_fit() in prover/prover/forward.cuh). This is a roomier scale, allowed for a synthetic
+proof; it disables no range or `UNFIT` check, and it does not change the verifier's planning calls
+(the arrays plan and the standard-form conditions read the shape, not `kg`), so the expected verify
+outcome is unchanged. `tests/tinyllama/proof/test_make_dense_kit.py` pins the raised `kg`. No other
+forward-pass value is at risk: attention keeps the base kit's scales and has no clamp dependency, and
+the raised `kg` only shrinks the gate quotient, so the SiLU input, the down projection and the
+residual stay within the range the base kit's dense (even) layers already proved.
+
 ### Building the dense kit off the pod
 
-`tinyllama/proof/make_dense_kit.py` writes the dense kit from a base MoE kit, with the same transform
-as `served_form_test.py`'s no_experts case. The M2 stand-in derives from
-prover/tests/configurations/pinned (L 8, ll 2, lt 6 so T 64, d 512), giving the same shape with
-`NE 0`. With a built cp_verify it also writes layout.txt:
+`tinyllama/proof/make_dense_kit.py` writes the dense kit from a base MoE kit, with the same policy
+transform as `served_form_test.py`'s no_experts case plus the raised `kg` of the second fix above.
+The M2 stand-in derives from prover/tests/configurations/pinned (L 8, ll 2, lt 6 so T 64, d 512),
+giving the same shape with `NE 0`. With a built cp_verify it also writes layout.txt:
 
 ```sh
 python3 -m tinyllama.proof.make_dense_kit \
@@ -364,11 +395,15 @@ python3 -m tinyllama.proof.make_dense_kit \
   --base prover/tests/configurations/pinned --out /tmp/dense-kit \
   --cp-verify "$BUILD/cp_verify"
 
-# 4. commit, prove and verify on synthetic (made-up) weights, test seed and test bits
+# 4. commit, prove and verify on synthetic (made-up) weights, test seed and test bits.
+# Create only config/ and in/. Do NOT pre-create ivk/, isk/ or out/: cp_commit and cp_prove create
+# them themselves, mode 0700, and refuse a directory that already exists.
 WORK=/tmp/dense-run
-mkdir -p "$WORK/config" "$WORK/ivk" "$WORK/isk" "$WORK/in" "$WORK/out"
+mkdir -p "$WORK/config" "$WORK/in"
 cp /tmp/dense-kit/policy.txt /tmp/dense-kit/KL.bin /tmp/dense-kit/layout.txt "$WORK/config/"
-head -c 32 /dev/zero > "$WORK/seed"
+# The test seed must not be all zero: cp_prove refuses an all-zero -test-seed (hc-key-file). Use
+# urandom, as the official prover tests do; do not use /dev/zero.
+head -c 32 /dev/urandom > "$WORK/seed"
 python3 -I -B prover/tools/make_request.py "$WORK/config/policy.txt" "$WORK/in/example.req"
 
 "$BUILD/cp_commit" -weights made-up-blocks -config "$WORK/config" -M 1 \
@@ -394,4 +429,6 @@ Expected after the fix, to be recorded only once the run is done:
   verifier policy change O1 / T4.3, which is not in this branch).
 
 The pod harness that samples GPU memory and times each step is
-`work/pod_reports/2026-11-06-m2/scripts/run_dense_once.sh`; the facts above do not need it.
+`work/pod_reports/2026-11-06-m2/scripts/run_dense_once.sh`; the facts above do not need it. That
+script predates the harness notes above (it pre-creates ivk/isk/out and seeds from /dev/zero), so
+prefer the commands here, or fix the script's seed and drop its ivk/isk/out mkdir before reusing it.
