@@ -78,7 +78,7 @@ static inline bool norm_words_fit(int M, int K, int xl) {
   return M >= 24 && M <= 47 && K >= 17 && K <= 32 && K >= M - (xl == 5 && K <= 23 ? 13 : 14);
 }
 // Returns whether the forward pass supports layer l's shifts and norm exponents; prints the first
-// that it does not. Of s it reads only prof, xl and the digit forms hqk to hr (see write_digits()).
+// that it does not. Of s it reads only prof, NE, xl and the digit forms hqk to hr (see write_digits()).
 static inline bool layer_words_fit(const LayerScaleSet &w, int l, const LayerShape &s) {
   auto shift = [&](const char *n, int k, int form) {
     const int hi = form == 0 ? 16 : form == 1 ? 24 : 32;
@@ -105,7 +105,7 @@ static inline bool layer_words_fit(const LayerScaleSet &w, int l, const LayerSha
     }
     if (!norm(1, w.M1, w.K1)) return false;
   }
-  return !moe_at_layer(s.prof, l) || (shift("kr", w.kr, s.hr) && shift("kgR", w.kgR, s.hg) && shift("kuR", w.kuR, s.hu));
+  return !moe_at_layer(s.prof, l, s.NE) || (shift("kr", w.kr, s.hr) && shift("kgR", w.kgR, s.hg) && shift("kuR", w.kuR, s.hu));
 }
 // GPU buffers. af, ad, ar, qa: cells [feature][t]. key: see the file's top. KH: see k_epi_gate_up().
 struct ForwardBuffers {
@@ -1555,7 +1555,7 @@ struct ForwardPass {
       }
       lie::here(l, lie::NORM2, s);
       norm(1, lam, sg, L.NN * lam + L.NN - 1, proof, s);
-      const bool mo = moe_at_layer(pf, l);
+      const bool mo = moe_at_layer(pf, l, L.s.NE);
       bool wrote = false;
       lie::here(l, mo ? lie::ROUTER : lie::FFN, s);
       if (mo)
