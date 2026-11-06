@@ -16,6 +16,13 @@ Checkpoint: `TinyLlama/TinyLlama-1.1B-Chat-v1.0` at revision `fe8a4ea1ffedaf415f
 - Base definition: FlashProve's Model (docs/model.md, sections 1 to 9) with NE = 0, the shape of section 1 below,
   rp = 1 in every layer, and the gate key form of `gcl 1` (section 9.1). Where this file says "as FlashProve", the
   cited lines of docs/model.md are normative, and this file only fixes parameters.
+- Proof profile (for a future proof, not part of the integer function above): the unclamped dense form with three
+  table digests. It is a dense model (NE 0) with no gate clamp and no router clamp (O2 option B), carrying the
+  digests of the three tables it uses, tsilu, trope and texp (O3, no tsig). FlashProve's verifier accepts this as
+  the standard parameter form (T4.3; verifier/docs/parameter-file.md). The proved function equals this contract's
+  function wherever the gate quotient gw fits 16 bits; M3 measured that it does on P0 to P3 and on all 40 windows
+  (work/pod_reports/2026-11-05-m3). A prompt on which some gw leaves that range has no proof under this profile.
+  docs/tinyllama/PROOF_PREP.md records the kit, request and verifier changes.
 - Every claim is either cited (file:line at the base commit, or a pinned external source) or marked
   **hypothesis**. "Probe" means a light script run on the shared box on 2026-11-04 (work/STATUS.md), not a test.
 

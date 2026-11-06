@@ -1,7 +1,12 @@
 # TinyLlama proof preparation
 
-Status: 2026-11-05, work item W-A (PROVING_PLAN M1, configuration kit). This page records only what
-was built and run for that item. It does not claim a proof, a verification, or a planner-accepted kit.
+Status: 2026-11-06, M4 code (PROVING_PLAN T4.1, T4.3, T4.4) and the configuration kit. This page
+records only what was built and run. It does not claim a proof, a verification on real weights, a
+GPU run, or any measured proof size. The proof profile is the unclamped dense form with three table
+digests (O2 option B and O3): a dense model (NE 0) with no gate clamp and no router clamp, carrying
+the digests of the three tables it uses, tsilu, trope and texp. See
+docs/tinyllama/ARITHMETIC_CONTRACT.md section 0 and verifier/docs/parameter-file.md, "The standard
+parameter form".
 
 ## The configuration kit
 
@@ -25,14 +30,26 @@ The tool writes:
   max(`2^(block_log - table_rows_log)`, `2^ceil_log2(nm)`) that is at least the row length plus
   `3 * answers`, and `fln` is at least `ceil_log2(i0 + nm) + 1`.  The model lines are dense
   (`NE 0`, `ll 1`, no experts), use the artifact's `params.json` for `L`, `d`, `H`, `G`, `dh`, `f`,
-  `V`, `MF`, `KF`, `s`, `eps1`, `eps2` and `epsF`, and use the shift ceilings of contract TL-INT-1
-  for the digit forms.  The acceptance policy is the exact match (`C 256`, `theta 256`, `cap 0`,
-  `sh 8`, `sT 4`, `F 24`).  There is no `gcl`, no `rcl`, no `eg`/`smax`, and no table-digest line.
-  The layer call lines omit the segments `XR`, `LR`, `LT`, `DD`, `LH`, `SEL`, `L3`, `CLR`, `MR`,
-  `G0` and `CG`; `iota_*`, `iotaA_0` and `iotaH_*` are computed by the same rules as
-  `verifier/tests/forest_lines.py` and the attention and output-head call layouts.  `--lt N`
-  selects the window (6 to 10; M1 asks for 6 and 10); lower values are refused because the prover
-  requires `lB >= 4` and this kit derives `lB = min(6, N - 2)`.
+  `V`, `MF`, `KF`, `s`, `eps1`, `eps2` and `epsF`.  The digit forms `hv`, `ho`, `hgD`, `huD` and
+  `hdD` follow the artifact's largest shift of each kind (`hq` is 2); `kFD` is computed from the
+  softmax table length, `dh` and the attention shift (`af-policy-kF`), and `la` caps `la - lt` at
+  `log2(dh)` as well as the divisibility rule (`af-shape-la`).  The acceptance policy is the exact
+  match (`C 256`, `theta 256`, `cap 0`, `sh 8`, `sT 4`, `F 24`).  There is no `gcl`, no `rcl`, no
+  `eg` or `smax`.
+  - It writes the three table digest lines `tsilu`, `trope` and `texp` (eight words each, in that
+    order; never `tsig`, which a dense model does not use).  They are computed with
+    `tinyllama.convert.tables` for the kit's own window, head and table parameters, so they equal
+    the tables `cp_verify` recomputes and compares; when the artifact pins digests they are checked
+    against them (the table-identity guard).
+  - The layer call lines are built from the digit forms, not fixed: each high segment (`QKH`, `GH`,
+    `UH`, `OH`, `DH`, `VH`) is placed in an R8 call for form 1, an R16 call for form 2, or left out
+    for form 0; `ROW`, the base R16 segments, `FC` and `FL` are always present; no MoE segment
+    (`XR`, `LR`, `LT`, `DD`, `LH`, `SEL`, `L3`, `CLR`, `MR`, `G0`, `CG`) appears.  A fixed list that
+    named a high segment the verifier did not expect was the M1 `policy-call-list` failure.
+    `iota_*`, `iotaA_0` and `iotaH_*` are computed by the same rules as
+    `verifier/tests/forest_lines.py` and the attention and output-head call layouts.  `--lt N`
+    selects the window (6 to 10; M1 asks for 6 and 10); lower values are refused because the prover
+    requires `lB >= 4` and this kit derives `lB = min(6, N - 2)`.
 - `KL.bin`: copied byte for byte from the artifact.
 - `layout.txt`: written only when a usable `cp_verify` is available.  The tool runs
   `cp_verify -plan arrays OUT 128` and then `prover/tools/pack_layout.py --arrays ...` with the link
@@ -45,8 +62,52 @@ The tool writes:
 artifact id is refused before any file is written.
 
 The unit tests use a small synthetic artifact built by `tests/tinyllama/reference/tiny_artifact.py`;
-they cover determinism, the byte-for-byte `KL.bin`, the dense policy lines, the call lists, the table
-capacity and the wrong-id refusal.
+they cover determinism, the byte-for-byte `KL.bin`, the dense policy lines, the call lists, the
+digest lines, the computed `kFD`, the table capacity and the wrong-id refusal.
+
+## The request file
+
+`tinyllama/proof/make_request.py` writes a request file from a prompt and reply in the format of
+`prover/examples/TARGET-KITS.md`: the window of T tokens (`p + a`, then id 0 padding) followed by
+`r = len(p) - 1` and `e = len(p) + len(a) - 1`.  The reply tokens are given directly or appended
+greedily from our CPU integer reference (`tinyllama.reference.model.forward`), never the float
+model.  The first real request is P0's 24 ids then the next token 1576 then padding, with r 23 and
+e 24:
+
+```sh
+python3 -m tinyllama.proof.make_request --prompt P0 --reply-ids 1576 --window 64 --out p0.req
+```
+
+`--greedy N --artifact DIR` instead appends N reply tokens that the reference chooses.  The file is
+created new and owner-readable only.
+
+## Dense standard form verified locally (2026-11-06)
+
+The dense standard form (T4.3) and the kit and request changes (config_kit, T4.4) were exercised on
+this box with a locally built `cp_verify`.  Note on that build: the box has no `g++`, so the build
+used the sandbox's `g++ 11.4.0` through a wrapper that drops two GCC 12 and later hardening flags
+(`-ftrivial-auto-var-init=zero`); this is **not** the production build (g++ 13 and the full
+hardening set), and was used only to drive the planner for these checks. No GPU, no weights commit
+and no proof were run, and no proof size, table size or security bits were measured.
+
+What ran and passed:
+
+- `verifier/tests/served_form_test.py` on `prover/tests/configurations/pinned`: all as expected,
+  including the new dense cases (a dense kit with no digest lines misses only `table-digests`; a
+  dense kit with the three digests meets every condition; a dense kit with the four digest lines or
+  with a clamp line is refused; the MoE cases are unchanged).
+- `config_kit` at TinyLlama's shape (L 22, d 2048, H 32, G 4, dh 64, f 5632, V 32000, NE 0) from
+  the contract id and a representative `KL.bin` (the M3 shift ranges, kq 27, kk 25, kd 17, the rest
+  small), lt 10: `cp_verify -plan arrays` and `cp_verify -plan request` both end status 4, print no
+  `not the standard parameter form` line, and `-plan request` prints `this program's three public
+  tables match the parameter file's digests`.  The call lines placed `DH` in the R8 call (kd 17 is
+  digit form 1) and left `GH`, `UH`, `OH`, `VH` out (their shifts are form 0).  The computed
+  `tsilu0`, `trope0` and `texp0` were 2048398297, 2141436500 and 3648852807, equal to
+  docs/tinyllama/ARITHMETIC_CONTRACT.md section 6.
+
+What still needs a host with the real artifact and the production build: the same calls on the real
+`KL.bin`, `-plan accounting` for the table, proof and bits figures, and then M5 and M6 on an H100.
+Use the commands under "Exact commands for a CPU pod" below.
 
 ## M1 planning calls
 
@@ -113,9 +174,11 @@ done
 A successful `-plan arrays` call exits 4, which the shell loop above does not treat as a failure to
 be repaired.  `config_kit` already made `layout.txt` from that call and `pack_layout.py`.  The files
 to record are `plan-accounting.txt` (the `proof`, `key`, `entry` and bits lines) and
-`plan-request.txt` (the line `plan: not the standard parameter form (...)`, which M1 expects to name
-only `routed-experts`, `both-clamps` and `table-digests`).  Until those calls run, table size, proof
-size and security bits remain not measured.
+`plan-request.txt`.  With the dense standard form (T4.3) a dense kit that carries the three digests
+no longer prints `plan: not the standard parameter form`; `plan-request.txt` should instead hold the
+line `plan: this program's three public tables match the parameter file's digests (lines tsilu0,
+trope and texp)` and no `not the standard parameter form` line.  Until those calls run on the real
+artifact's `KL.bin`, table size, proof size and security bits remain not measured.
 
 ## M3 pod runbook
 
