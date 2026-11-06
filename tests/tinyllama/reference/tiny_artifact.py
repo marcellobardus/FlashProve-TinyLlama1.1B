@@ -141,8 +141,15 @@ def build_artifact(
     wh_values=None,
     emb_scale=100,
     emb_values=None,
+    exponents=None,
 ):
-    """Write one tiny valid artifact below ``root`` and return its path."""
+    """Write one tiny valid artifact below ``root`` and return its path.
+
+    ``exponents`` becomes exponents.json; the default is empty, as the reference
+    tests do not read it.  Tests that need per-tensor exponents (for example the
+    sums file of PROVING_PLAN T4.2) pass a dict keyed by the HuggingFace tensor
+    names, as the converter writes it (tinyllama/convert/run.py).
+    """
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(seed)
@@ -198,5 +205,6 @@ def build_artifact(
         tables,
         _provenance(),
         dims=dims,
+        exponents=exponents,
     )
     return root / artifact_id
