@@ -1,0 +1,1 @@
+"""TinyLlama integer contract implementation."""

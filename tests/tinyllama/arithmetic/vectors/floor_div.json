@@ -1,0 +1,21 @@
+{
+  "primitive": "floor(a / b) for b > 0, also for negative a (ARITHMETIC_CONTRACT.md 2.3)",
+  "cases": [
+    {"a": 7, "b": 2, "expected": 3},
+    {"a": -7, "b": 2, "expected": -4, "note": "floor, not truncation"},
+    {"a": -8, "b": 2, "expected": -4},
+    {"a": -9, "b": 2, "expected": -5},
+    {"a": -1, "b": 2, "expected": -1},
+    {"a": 0, "b": 5, "expected": 0},
+    {"a": 100, "b": 7, "expected": 14},
+    {"a": -100, "b": 7, "expected": -15, "note": "-14.28 floors to -15"},
+    {"a": 5, "b": 5, "expected": 1},
+    {"a": -5, "b": 5, "expected": -1},
+    {"a": 5, "b": 2, "expected": 2, "note": "floor(sigma / 2) for sigma = 5"},
+    {"a": 5, "b": 3, "expected": 1},
+    {"a": -6, "b": 3, "expected": -2},
+    {"a": 16777218, "b": 5, "expected": 3355443, "note": "the Rc division of the contract's norm example"},
+    {"a": 4611686018427387904, "b": 2147483648, "expected": 2147483648, "note": "2^62 / 2^31"},
+    {"a": -4611686018427387904, "b": 2147483648, "expected": -2147483648}
+  ]
+}
