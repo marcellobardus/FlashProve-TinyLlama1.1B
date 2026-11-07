@@ -1,0 +1,208 @@
+---- stage key ---- 1 thread(s), 1.631 s
+ok public inputs: parameter file, shape, no-overflow conditions; profile 4; 11 blocks of layers  0.045 s
+computed commitment ID: d319bc487793a0682821d7e47f1a0cf0cb4e5ee674b34749c65e2d804812c227
+accounting: one-time files: the plan of a key: 44 closeness rounds rest on the theorem on codes (ePrint 2025/2055, Thm 4.6), taken as given, 0 on the bound within a third of the distance; the table has a record
+ok the key: 2043400 bytes, read to the end
+plan-sums: 5750 5367 122.340346 93.092423 1 39031 35526
+plan-rests: 128 256 1 0 44 0 0 0 0 0 0 0 0 0 0 20 28 32 0 0 0 0 0 0
+plan-near: 24 0 0 24 14 32
+plan-worst: BASE lambda (Omega, last stage)
+plan-lists: 96.236397 32 1 1 CS (Omega, stage #)
+plan-round: 128.001105 0 1 0 BASE lambda (Omega, last stage)
+plan-round: 128.001105 0 1 0 BASE lambda (a request's own test, last stage)
+plan-round: 128.002475 0 13 0 FOLD round (folded row, stage #)
+plan-round: 128.002475 0 1 0 BASE lambda (folded row, last stage)
+plan-round: 128.008271 0 4 0 FOLD round (Omega, stage #)
+plan-round: 128.008271 0 4 0 FOLD round (a request's own test, stage #)
+work: 96.23 + 32 (one round's error without its work, in bits, + its bits of work; key: CS (Omega, stage #))
+result: word=825374792 sec=128 asked=128 pow=20 pows=28 powc=32 (research code; no security level is claimed)
+STAGE PASSED WITH WORK: key
+---- stage leaf ---- 1 thread(s), 1.491 s
+ok public inputs: parameter file, shape, no-overflow conditions; profile 4; 11 blocks of layers  0.045 s
+computed commitment ID: d319bc487793a0682821d7e47f1a0cf0cb4e5ee674b34749c65e2d804812c227
+accounting: one-time files: the plan of an entry: 16 closeness rounds rest on the theorem on codes (ePrint 2025/2055, Thm 4.6), taken as given, 0 on the bound within a third of the distance; the table has a record
+ok the entry: 2217912 bytes, read to the end
+plan-sums: 29 28 123.807795 94.776514 1 27015 25434
+plan-rests: 128 256 1 0 16 0 0 0 0 0 0 0 0 0 0 20 28 32 0 0 0 0 0 0
+plan-near: 15 0 0 15 4 9
+plan-worst: FOLD round (the two folded rows, stage 2)
+plan-lists: 96.237188 32 1 1 LINK (link)
+plan-round: 128.002475 0 14 0 FOLD round (the two folded rows, stage #)
+plan-round: 128.002475 0 1 0 BASE lambda (the two folded rows, last stage)
+plan-round: 128.022856 0 1 0 LINK point (link)
+plan-round: 96.237188 32 1 1 LINK (link)
+plan-round: 96.505873 32 1 1 CS (the two folded rows, stage #)
+plan-round: 97.353892 32 1 1 BASE (the two folded rows, last stage)
+work: 96.23 + 32 (one round's error without its work, in bits, + its bits of work; leaf: LINK (link))
+result: word=825374792 sec=128 asked=128 pow=20 pows=28 powc=32 (research code; the key's table was taken on its form alone: what a key says of it is the stage key's to check, on the same bytes; no security level is claimed)
+STAGE PASSED WITH WORK: leaf
+---- stage request ---- 1 thread(s), 7.665 s
+leaf number 0
+ok public inputs: parameter file, shape, no-overflow conditions; profile 4; 11 blocks of layers  0.045 s
+computed commitment ID: d319bc487793a0682821d7e47f1a0cf0cb4e5ee674b34749c65e2d804812c227
+ok the request's form; key's and entry's tables read for their form alone
+layout: the layout file; it is lawful (blocks/frame/req_frame.h, blocks/iop/req_rows.h)
+link 1: sub-proof G0, identifier 1; 3 commitments; rows over F 202 (kept for later links 6), over E 1; arrays 12 in 208 blocks; 3067 scalars
+link 2: sub-proof A0, identifier 13; 3 commitments; rows over F 87 (kept for later links 0), over E 1; arrays 7 in 94 blocks; 3262 scalars
+link 3: sub-proof G1, identifier 2; 3 commitments; rows over F 201 (kept for later links 6), over E 1; arrays 11 in 196 blocks; 3066 scalars
+link 4: sub-proof A1, identifier 14; 3 commitments; rows over F 87 (kept for later links 0), over E 1; arrays 7 in 94 blocks; 3262 scalars
+link 5: sub-proof G2, identifier 3; 3 commitments; rows over F 201 (kept for later links 6), over E 1; arrays 11 in 196 blocks; 3066 scalars
+link 6: sub-proof A2, identifier 15; 3 commitments; rows over F 87 (kept for later links 0), over E 1; arrays 7 in 94 blocks; 3262 scalars
+link 7: sub-proof G3, identifier 4; 3 commitments; rows over F 201 (kept for later links 6), over E 1; arrays 11 in 196 blocks; 3066 scalars
+link 8: sub-proof A3, identifier 16; 3 commitments; rows over F 87 (kept for later links 0), over E 1; arrays 7 in 94 blocks; 3262 scalars
+link 9: sub-proof G4, identifier 5; 3 commitments; rows over F 201 (kept for later links 6), over E 1; arrays 11 in 196 blocks; 3066 scalars
+link 10: sub-proof A4, identifier 17; 3 commitments; rows over F 87 (kept for later links 0), over E 1; arrays 7 in 94 blocks; 3262 scalars
+link 11: sub-proof G5, identifier 6; 3 commitments; rows over F 201 (kept for later links 6), over E 1; arrays 11 in 196 blocks; 3066 scalars
+link 12: sub-proof A5, identifier 18; 3 commitments; rows over F 87 (kept for later links 0), over E 1; arrays 7 in 94 blocks; 3262 scalars
+link 13: sub-proof G6, identifier 7; 3 commitments; rows over F 201 (kept for later links 6), over E 1; arrays 11 in 196 blocks; 3066 scalars
+link 14: sub-proof A6, identifier 19; 3 commitments; rows over F 87 (kept for later links 0), over E 1; arrays 7 in 94 blocks; 3262 scalars
+link 15: sub-proof G7, identifier 8; 3 commitments; rows over F 201 (kept for later links 6), over E 1; arrays 11 in 196 blocks; 3066 scalars
+link 16: sub-proof A7, identifier 20; 3 commitments; rows over F 87 (kept for later links 0), over E 1; arrays 7 in 94 blocks; 3262 scalars
+link 17: sub-proof G8, identifier 9; 3 commitments; rows over F 201 (kept for later links 6), over E 1; arrays 11 in 196 blocks; 3066 scalars
+link 18: sub-proof A8, identifier 21; 3 commitments; rows over F 87 (kept for later links 0), over E 1; arrays 7 in 94 blocks; 3262 scalars
+link 19: sub-proof G9, identifier 10; 3 commitments; rows over F 201 (kept for later links 6), over E 1; arrays 11 in 196 blocks; 3066 scalars
+link 20: sub-proof A9, identifier 22; 3 commitments; rows over F 87 (kept for later links 0), over E 1; arrays 7 in 94 blocks; 3262 scalars
+link 21: sub-proof G10, identifier 11; 3 commitments; rows over F 201 (kept for later links 6), over E 1; arrays 11 in 196 blocks; 3066 scalars
+link 22: sub-proof A10, identifier 23; 3 commitments; rows over F 87 (kept for later links 0), over E 1; arrays 7 in 94 blocks; 3262 scalars
+link 23: sub-proof H, identifier 12; 3 commitments; rows over F 147 (kept for later links 0), over E 1; arrays 7 in 86 blocks; 2946 scalars
+seconds: before the proof is read (the scan, the plans, blk::configure(), the request's form, the accounting) 1.791
+read: sub-proof G_0: 7 lookup calls in one forest, 2 more in the smallness test's, 9 matrices, 810 claims listed (tested at the chain's end), 3067 slots  0.193 s
+   its equation: 17 terms of rank one, 603128 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.000 | the sub-proof's own checks 0.124 | the frame's later() 0.000 | the equation's terms made 0.007 | the frame's close() 0.063
+read: sub-proof A_0: 1049 claims listed (tested at the chain's end), 3262 slots  0.074 s
+   its equation: 13 terms of rank one, 268030 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.011 | the sub-proof's own checks 0.051 | the frame's later() 0.000 | the equation's terms made 0.002 | the frame's close() 0.021
+read: sub-proof G_1: 7 lookup calls in one forest, 2 more in the smallness test's, 9 matrices, 807 claims listed (tested at the chain's end), 3066 slots  0.198 s
+   its equation: 17 terms of rank one, 602968 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.008 | the sub-proof's own checks 0.122 | the frame's later() 0.000 | the equation's terms made 0.007 | the frame's close() 0.070
+read: sub-proof A_1: 1049 claims listed (tested at the chain's end), 3262 slots  0.072 s
+   its equation: 13 terms of rank one, 268030 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.011 | the sub-proof's own checks 0.050 | the frame's later() 0.000 | the equation's terms made 0.002 | the frame's close() 0.020
+read: sub-proof G_2: 7 lookup calls in one forest, 2 more in the smallness test's, 9 matrices, 807 claims listed (tested at the chain's end), 3066 slots  0.196 s
+   its equation: 17 terms of rank one, 602968 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.008 | the sub-proof's own checks 0.121 | the frame's later() 0.000 | the equation's terms made 0.007 | the frame's close() 0.068
+read: sub-proof A_2: 1049 claims listed (tested at the chain's end), 3262 slots  0.091 s
+   its equation: 13 terms of rank one, 268030 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.011 | the sub-proof's own checks 0.050 | the frame's later() 0.000 | the equation's terms made 0.002 | the frame's close() 0.039
+read: sub-proof G_3: 7 lookup calls in one forest, 2 more in the smallness test's, 9 matrices, 807 claims listed (tested at the chain's end), 3066 slots  0.298 s
+   its equation: 17 terms of rank one, 602968 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.015 | the sub-proof's own checks 0.184 | the frame's later() 0.000 | the equation's terms made 0.011 | the frame's close() 0.104
+read: sub-proof A_3: 1049 claims listed (tested at the chain's end), 3262 slots  0.134 s
+   its equation: 13 terms of rank one, 268030 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.017 | the sub-proof's own checks 0.088 | the frame's later() 0.000 | the equation's terms made 0.011 | the frame's close() 0.036
+read: sub-proof G_4: 7 lookup calls in one forest, 2 more in the smallness test's, 9 matrices, 807 claims listed (tested at the chain's end), 3066 slots  0.299 s
+   its equation: 17 terms of rank one, 602968 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.014 | the sub-proof's own checks 0.185 | the frame's later() 0.000 | the equation's terms made 0.011 | the frame's close() 0.104
+read: sub-proof A_4: 1049 claims listed (tested at the chain's end), 3262 slots  0.111 s
+   its equation: 13 terms of rank one, 268030 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.018 | the sub-proof's own checks 0.078 | the frame's later() 0.000 | the equation's terms made 0.003 | the frame's close() 0.030
+read: sub-proof G_5: 7 lookup calls in one forest, 2 more in the smallness test's, 9 matrices, 807 claims listed (tested at the chain's end), 3066 slots  0.298 s
+   its equation: 17 terms of rank one, 602968 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.012 | the sub-proof's own checks 0.184 | the frame's later() 0.000 | the equation's terms made 0.011 | the frame's close() 0.104
+read: sub-proof A_5: 1049 claims listed (tested at the chain's end), 3262 slots  0.111 s
+   its equation: 13 terms of rank one, 268030 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.017 | the sub-proof's own checks 0.078 | the frame's later() 0.000 | the equation's terms made 0.003 | the frame's close() 0.030
+read: sub-proof G_6: 7 lookup calls in one forest, 2 more in the smallness test's, 9 matrices, 807 claims listed (tested at the chain's end), 3066 slots  0.297 s
+   its equation: 17 terms of rank one, 602968 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.012 | the sub-proof's own checks 0.184 | the frame's later() 0.000 | the equation's terms made 0.011 | the frame's close() 0.104
+read: sub-proof A_6: 1049 claims listed (tested at the chain's end), 3262 slots  0.111 s
+   its equation: 13 terms of rank one, 268030 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.017 | the sub-proof's own checks 0.078 | the frame's later() 0.000 | the equation's terms made 0.003 | the frame's close() 0.030
+read: sub-proof G_7: 7 lookup calls in one forest, 2 more in the smallness test's, 9 matrices, 807 claims listed (tested at the chain's end), 3066 slots  0.298 s
+   its equation: 17 terms of rank one, 602968 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.012 | the sub-proof's own checks 0.184 | the frame's later() 0.000 | the equation's terms made 0.011 | the frame's close() 0.104
+read: sub-proof A_7: 1049 claims listed (tested at the chain's end), 3262 slots  0.111 s
+   its equation: 13 terms of rank one, 268030 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.017 | the sub-proof's own checks 0.078 | the frame's later() 0.000 | the equation's terms made 0.003 | the frame's close() 0.030
+read: sub-proof G_8: 7 lookup calls in one forest, 2 more in the smallness test's, 9 matrices, 807 claims listed (tested at the chain's end), 3066 slots  0.298 s
+   its equation: 17 terms of rank one, 602968 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.012 | the sub-proof's own checks 0.184 | the frame's later() 0.000 | the equation's terms made 0.011 | the frame's close() 0.104
+read: sub-proof A_8: 1049 claims listed (tested at the chain's end), 3262 slots  0.111 s
+   its equation: 13 terms of rank one, 268030 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.018 | the sub-proof's own checks 0.078 | the frame's later() 0.000 | the equation's terms made 0.003 | the frame's close() 0.030
+read: sub-proof G_9: 7 lookup calls in one forest, 2 more in the smallness test's, 9 matrices, 807 claims listed (tested at the chain's end), 3066 slots  0.299 s
+   its equation: 17 terms of rank one, 602968 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.012 | the sub-proof's own checks 0.185 | the frame's later() 0.000 | the equation's terms made 0.011 | the frame's close() 0.104
+read: sub-proof A_9: 1049 claims listed (tested at the chain's end), 3262 slots  0.111 s
+   its equation: 13 terms of rank one, 268030 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.017 | the sub-proof's own checks 0.078 | the frame's later() 0.000 | the equation's terms made 0.003 | the frame's close() 0.030
+read: sub-proof G_10: 7 lookup calls in one forest, 2 more in the smallness test's, 9 matrices, 807 claims listed (tested at the chain's end), 3066 slots  0.298 s
+   its equation: 17 terms of rank one, 602968 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.012 | the sub-proof's own checks 0.185 | the frame's later() 0.000 | the equation's terms made 0.011 | the frame's close() 0.104
+read: sub-proof A_10: 1049 claims listed (tested at the chain's end), 3262 slots  0.111 s
+   its equation: 13 terms of rank one, 268030 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.018 | the sub-proof's own checks 0.078 | the frame's later() 0.000 | the equation's terms made 0.003 | the frame's close() 0.030
+read: sub-proof H: 6 lookup calls in one forest, 2 more in the smallness test's, 5 matrices, 718 claims listed (tested at the chain's end), 2946 slots  0.181 s
+   its equation: 13 terms of rank one, 356432 written-out weights in all; 0 virtual rows had no product form and were cut row by row
+   seconds: the frame's first() 0.012 | the sub-proof's own checks 0.122 | the frame's later() 0.000 | the equation's terms made 0.006 | the frame's close() 0.054
+seconds: the links' last proximity test (the frame's finish()) 1.011
+seconds: the links with their last test 5.643 | behind them (the rows on the table, the place, the shared chain, the second chain) 0.162
+ok the proof file: 15596716 bytes, read to the end: 23 links with what they leave on the table of weights; the chain that the whole batch shares; the chain that ends the request
+seal 9f2157616b927cd2ade6e0f00db2511fd5d7c2924cca22e4da3fb5bc79b7cfee
+weight hiding: NOT CHECKED BY THIS RUN (it rests on how the commitment was made)
+plan-sums: 42650 38833 119.557657 92.656394 1 356895 506796
+plan-rests: 128 256 1 0 289 0 0 0 0 0 0 0 0 0 0 20 28 32 0 0 0 0 0 0
+plan-near: 99 23 0 76 56 255
+plan-worst: RNG (G0, smallness test)
+plan-lists: 96.236397 32 1 1 CS (Omega, stage #)
+plan-round: 128.000000 0 11 0 RNG (G#, smallness test)
+plan-round: 128.000000 0 11 0 RNG (attention #, smallness test)
+plan-round: 128.000000 0 1 0 RNG (head, smallness test)
+plan-round: 128.000820 0 7 0 FOLD round (last group, stage #)
+plan-round: 128.001105 0 2 0 BASE lambda (Omega, last stage)
+plan-round: 128.001105 0 2 0 BASE lambda (a request's own test, last stage)
+plan-union: 116.199100 0 1 3568 RNG (G0, smallness test)
+work: 100.11 + 28 (one round's error without its work, in bits, + its bits of work; request: CS (Omega, stage #))
+result: word=825374792 ms=d319bc487793a0682821d7e47f1a0cf0cb4e5ee674b34749c65e2d804812c227 sec=128 t=218 asked=128 by=largest-round-error T=64 lim=- C=256 theta=256 cap=0 s=17 sh=8 sT=4 F=24 leaves=64 place=19 card=0 judged=1 of 1 dj=9f2157616b927cd2ade6e0f00db2511fd5d7c2924cca22e4da3fb5bc79b7cfee build=04252d966c4310f06fedefffc6b23bfb6dd7014235052ca68214a4f7c9f30aae dw=8 pow=20 pows=28 powc=32 (research code; the test on the weight table was checked; lidb 24; no security level is claimed)
+STAGE PASSED WITH WORK: request
+---- the call ----
+accounting: key, entry and proof: soundness round by round
+accounting: target: 128 bits in every round, proof of work counted; every list of positions is derived from the target less the work before its draw
+accounting: work, bits before a verifier's message, by the kind of its error (a request's own rounds / a batch's shared / the committer's): positions 20 / 28 / 32;
+accounting: THE LARGEST ROUND ERROR: 2^-128.00, in the round "RNG (G0, smallness test)". Each round's error is compared with the target by itself: the rounds' errors are not added to one another. There are 42650 rounds, 38833 of them with a verifier's message.
+accounting: rounds that hold with less than 0.01 bit to spare, work counted: 99: 23 of the smallness test, 76 with a closeness term (76 of these on the theorem on codes, ePrint 2025/2055, Theorem 4.6, taken as given), 0 others
+accounting: the rounds with the largest errors (# stands for a number):
+accounting:   2^-128.00, 11 round(s): RNG (G#, smallness test)
+accounting:   2^-128.00, 11 round(s): RNG (attention #, smallness test)
+accounting:   2^-128.00, 1 round(s): RNG (head, smallness test)
+accounting:   2^-128.00, 7 round(s): FOLD round (last group, stage #)
+accounting:   2^-128.00, 2 round(s): BASE lambda (Omega, last stage)
+accounting:   2^-128.00, 2 round(s): BASE lambda (a request's own test, last stage)
+accounting: THE ROUNDS: HOLD WITH WORK: 96.23 + 32: all rounds hold at the target, 56 of them only because their proof of work is counted; the pair is one round's: of all rounds the one with the largest error when work is left out, 2^-96.23, and its bits of work
+work: 96.23 + 32 (key, entry and proof: CS (Omega, stage #))
+accounting: hash calls: t, the prover's, is a free variable; q_V, the verifier's own in this run: 423942
+accounting: compiled bound: (t + q_V + 1) 2^-128.00 + 17/2 (t + q_V)^2 / 2^256; the second term is the digests' (256 bits); in the first, proof of work is counted (without it: 2^-96.23)
+accounting:   at t = 2^64: 2^-63.99 + 2^-124.91 (proof of work counted)
+accounting:   at t = 2^96: 2^-32.00 + 2^-60.91 (proof of work counted)
+accounting:   at t = 2^120: 2^-8.00 + 2^-12.91 (proof of work counted)
+accounting: as one number, by the compiled bound: 126.21 bits, proof of work counted (without it: 96.23 bits): the largest L such that a prover with at most 2^L hash calls, the verifier's counted in, succeeds with probability at most (its calls) / 2^L
+accounting: what stands behind it:
+accounting:   of the rounds with a closeness term 0 rest on a lemma of the paper that this protocol builds on (see THIRD_PARTY.md), proved there (within a third of a code's distance; the same bound is also in other papers: blocks/numbers/codes.h names them)
+accounting:   289 of them rest on the theorem on codes, Theorem 4.6 of ePrint 2025/2055, which we take as given and of which we have verified no proof ourselves (blocks/numbers/codes.h says what the posting of November 6, 2025 prints behind it): TAKEN AS GIVEN
+accounting:   beyond a third a fold's round has no factor for the number of interleaved rows (a bound argued on paper for this protocol, for linear codes over E and two tables combined by one challenge; see docs/limits.md)
+accounting:   a fold of 2^v rows at one point counts v closeness terms (a bound argued on paper for this protocol; see docs/limits.md)
+accounting:   the bounds for this protocol's own steps are argued on paper, in a technical report that is not public and not refereed: see docs/limits.md#what-the-theorem-assumes
+accounting:   the smallness test's round counts one column: the first that no small integer column explains, which is fixed before the draw (argued on paper for this protocol; see docs/limits.md); a union bound over all columns stands among the stricter readings
+accounting:   the blocks' round errors and the compiled bound are cited from published work, some of it not peer-reviewed, or argued on paper in a technical report that is not public and not refereed; they are not proved for these programs (the Lean library proves its own verifier's bound, not this one)
+accounting:   255 round(s) have an error that is computed from a number which the parameter file or this program's own code supplies and which no check ties to the run at that round (blocks/numbers/plan.h, ON_THE_CALLERS_WORD, says which numbers; some are held at a later place; see docs/limits.md#how-the-programs-count). Not counted: the rule and the integer m under which a group's distance stands: they are the analysis's choice and no number of a run; that all rounds of one chain on the same two codes were priced under one choice is not asked by this account: the committer, the prover and the verifier ask it of each chain when they read the public files
+accounting:   that g bits of work before a message multiply its round's error by 2^-g is assumed for this program's hash chains; it is proved for another setting in ePrint 2021/582, Theorem 6
+accounting:   that the programs compute the protocol is not proved; no figure here is a security level
+accounting: hiding is a separate bound, in the numbers of queries and of proofs on one commitment, and is no part of these figures
+accounting: FOR INFORMATION, stricter readings of the same rounds, which decide nothing. Each starts from the rounds' errors as they are charged above; in some rounds the charge is the largest of several events' chances and not their sum: so none is a union bound over all events
+accounting:   the largest round error without the work: 2^-96.23 (CS (Omega, stage #))
+accounting:   all rounds' errors added: 2^-119.55 with the work, 2^-92.65 without
+accounting:   the smallness test's round by a union bound over the 3568 columns of its matrix (their number times its error: one event a column: blocks/iop/rng.h): 2^-116.19 (RNG (G0, smallness test))
+accounting:   the unit of all figures above: one key's, one entry's and ONE request's proof; a round that the requests of a batch share is counted for all of them at once; counted jointly for a full batch of N requests, each round of a request's own chains reads log2(N) bits less (6 bits at 64)
+accounting: asked of this call: 128 bits
+commitment ID: d319bc487793a0682821d7e47f1a0cf0cb4e5ee674b34749c65e2d804812c227
+id: named by the caller and equal
+h_par=03639e50b23c86454310d845550a749f3c38c1c80e8468726aa67e59f342254c
+weight hiding: NOT CHECKED BY THIS CALL (it rests on how the commitment was made)
+covered: r=56 e=57 T=64 C=256 theta=256 cap=0 s=17 sh=8 positions=56..56 tokens=57..57 y=no next-token=no policy=exact-match above-clip=0 (places in the request, counted from 0; y=yes: the answer is about y too; it is about nothing else; above-clip: so many of the tokens named by tokens= may cost more than C, and such a token may be any token. It is no limit on the tokens that may be any token: one that costs C or less may be any token too where the committed model's logits lie close together, and no verifier sees that. All costs, each counted as at most C, add up to at most theta times the number of these tokens)
+stage key: work: 96.23 + 32 (one round's error without its work, in bits, + its bits of work; key: CS (Omega, stage #))
+stage leaf: work: 96.23 + 32 (one round's error without its work, in bits, + its bits of work; leaf: LINK (link))
+stage request: work: 100.11 + 28 (one round's error without its work, in bits, + its bits of work; request: CS (Omega, stage #))
+commitment: 60 closeness rounds of the one-time files rest on another source than the bound within a third of the distance; the table has a record: the binding of the weights rests on the theorem on codes (ePrint 2025/2055, Theorem 4.6), taken as given
+proof of work: up to 32 bits counted in 56 rounds; with it the least round has 128.00 bits, without it 96.23 bits
+result-v1 status=0 claim=exact-match id=d319bc487793a0682821d7e47f1a0cf0cb4e5ee674b34749c65e2d804812c227 bits=128 work=32 work-rounds=56 least-round=128.00 least-round-without-work=96.23 commitment-assumed-rounds=60 record=1 r=56 e=57 T=64 tokens=57..57 y=no policy=exact-match C=256 theta=256 cap=0 s=17 sh=8 sT=4 F=24 above-clip=0 leaf=0 stages=key,leaf,request dw=8 build=04252d966c4310f06fedefffc6b23bfb6dd7014235052ca68214a4f7c9f30aae
+YES

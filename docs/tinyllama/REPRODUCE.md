@@ -1,6 +1,7 @@
 # Reproduce
 
 Recorded CPU-only verification: [TL-INT-1 P0 T=64 M5m YES package](recorded/p0-tl-int-1-t64/README.md).
+Recorded CPU-only verification: [TL-INT-1 P2 T=64 M5n YES package](recorded/p2-tl-int-1-t64/README.md).
 
 ## RunPod pod
 
