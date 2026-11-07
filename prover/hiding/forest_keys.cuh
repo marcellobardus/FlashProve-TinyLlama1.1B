@@ -19,6 +19,7 @@
 // Only third_fold() needs weights that sum to 1: it computes alpha - sum_j K64[j] tau_j.
 #pragma once
 #include "hiding/forest_plan.h"
+#include "common/end_name.h" // name_the_end(): names an internal stop before a direct exit (M5e3)
 #include <mutex>
 #include <set>
 #include <type_traits>
@@ -331,6 +332,7 @@ template <int FROM, int TO, class Fn> inline void with_constant(int number, cons
          "below the first\n",
          number, TO);
   fflush(stdout);
+  name_the_end("forest-pass-shape"); // serving: p258 end 1 forest-pass-shape (kept as an exit(1))
   exit(1);
 }
 // launch_of(): the launch of a kernel that sets up a Form<S> and has work for `threads` threads: no more

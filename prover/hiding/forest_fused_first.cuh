@@ -22,6 +22,7 @@
 // words. [Async] (the copies into `rings`): see prover/hiding/forest_fused.cuh.
 // Include after prover/hiding/forest_fused_folds.cuh.
 #pragma once
+#include "common/end_name.h" // name_the_end(): names an internal stop before a direct exit (M5e3)
 namespace ff {
 // A thread block's record: 64 sums of products, 8 of left keys and 8 of right keys (times alpha),
 // the sum of eqhi (times alpha^2).
@@ -206,6 +207,7 @@ inline int first_range(const FirstTrees &trees, int dT, int lc, int nh, const u3
   if (lc < 5 || trees.n < 1 || trees.n > 256 || nh < 0 || lc + nh + 4 != dT) {
     printf("internal error: look-up forest: the last layer's first pass over %d trees of 2^%d keys in 2^%d chunks of 2^%d indices\n", trees.n, dT, nh, lc);
     fflush(stdout);
+    name_the_end("forest-pass-shape"); // serving: p258 end 1 forest-pass-shape (kept as an exit(1))
     exit(1);
   }
   const int items = trees.first[trees.n] << std::max(lc - FIRST_PART_BITS, 0), blocks = std::min((items + FIRST_WARPS - 1) / FIRST_WARPS, g_sms);

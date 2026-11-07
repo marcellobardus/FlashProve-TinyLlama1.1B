@@ -21,6 +21,7 @@
 // prover/hiding/forest_fused.cuh. For 2^64 modulo p, see reduce128() in blocks/field/gl64.h.
 // Include after prover/hiding/forest_fused.cuh. Called by the engine, prover/hiding/forest.cuh.
 #pragma once
+#include "common/end_name.h" // name_the_end(): names an internal stop before a direct exit (M5e3)
 namespace ff {
 namespace second {
 constexpr int BYTES_LEFT = 9, ROWS_A = 8 * 3 * BYTES_LEFT, TILES_A = (ROWS_A + 15) / 16; // 216 rows, 14 blocks of 16
@@ -280,6 +281,7 @@ inline void second_range(const fk::Tree &t, int dT, int chunk, const u32 *table,
   if ((COLS << ltiles) != k || n % k || k > second::PIECE_MOST || chunk % COLS || chunk > 65536) {
     printf("internal error: look-up forest: the last layer's second pass over %zu indices in pieces of %d\n", n, k);
     fflush(stdout);
+    name_the_end("forest-pass-shape"); // serving: p258 end 1 forest-pass-shape (kept as an exit(1))
     exit(1);
   }
   const int pieces = (int)(n / k);
