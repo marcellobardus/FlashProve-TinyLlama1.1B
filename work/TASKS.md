@@ -1,0 +1,73 @@
+# Tasks
+
+Shared interfaces I1 to I4 are defined in docs/tinyllama/INTERFACES.md (v1.0.0-draft) for contract TL-INT-1
+(docs/tinyllama/ARITHMETIC_CONTRACT.md). Workers use separate branches or worktrees and touch only their owned files.
+Heavy work runs on the RunPod cpu3g-8-32 pod (D7); on the shared box only T0 items and light tests are allowed.
+
+## Layout and file ownership
+
+```
+tinyllama/__init__.py        W1 (creates the package first; others do not edit it)
+tinyllama/contract.py        W1  constants of I1
+tinyllama/manifest.py        W1  checkpoint pins and hash checks
+tinyllama/artifacts.py       W1  I2 writer, loader, validator
+tinyllama/convert/           W1  safetensors reader, permutation, folding, calibration, fit
+tinyllama/reference/         W2  CPU integer reference, trace writer, run command (I3)
+tests/tinyllama/convert/     W1  unit tests of W1's own code
+tests/tinyllama/reference/   W2  smoke tests of W2's own code
+tests/tinyllama/conftest.py  W3
+tests/tinyllama/arithmetic/  W3  independent golden vectors from the contract text
+tests/tinyllama/artifacts/   W3  malformed artifact tests (one per I2.4 code)
+tests/tinyllama/test_tables.py W3
+tests/tinyllama/vectors/     W3  committed hash traces and synthetic vectors (I3 size rule)
+tests/tinyllama/eval/        W3  prompt loader, float baseline, quality metrics
+docs/tinyllama/, work/       lead (contract, interfaces, prompts_v1.json, REPRODUCE.md, records)
+artifacts/, traces/, work/scratch/   generated, git ignored
+```
+
+No file has two owners. W2 and W3 read I2 artifacts only through tinyllama/artifacts.py (W1). W3 never imports
+tinyllama/reference for expected values.
+
+## Tasks
+
+| ID | worker | objective | depends | owned files | acceptance command | expected evidence | ceiling |
+|---|---|---|---|---|---|---|---|
+| T0.1 | lead | ARITHMETIC_CONTRACT.md (I1) | audit | docs/tinyllama/ARITHMETIC_CONTRACT.md | review | done 2026-11-04, contract TL-INT-1 | docs only |
+| T0.2 | lead | INTERFACES.md (I1 to I4), prompts_v1.json | T0.1 | docs/tinyllama/INTERFACES.md, docs/tinyllama/prompts_v1.json | review | done 2026-11-04 | docs only |
+| T1.1 | W1 | package skeleton, contract.py, safetensors reader, BF16 to float32 exact, sha256 vs manifest (P3) | T0.2 | tinyllama/__init__.py, contract.py, manifest.py, convert/load.py | `pytest tests/tinyllama/convert/test_load.py` | done 2026-11-04, branch feature/tinyllama-w1-converter, commit a9459928 (reader, constants, manifest); W1 tests 69 passed together with T1.2 | RAM <= 6 GB, tensor at a time |
+| T1.2 | W1 | q/k permutation, gain folding with 0x3FB504F3 and 0x3E3504F3, per tensor exponent | T1.1 | convert/fold.py | `pytest tests/tinyllama/convert/test_fold.py` | done 2026-11-04, commit 1f2eae04 (permutation, gain folding); 69 passed in tests/tinyllama/convert | RAM <= 6 GB |
+| T1.5 | W1 | pod check P1 (permutation on real weights) | T1.2 | convert/check_permutation.py | documented command | max relative score difference below 1e-5; same greedy token | pod, about 5 GB |
+| T1.3 | W1 | calibration on TL-CAL-1 and scale fit (contract 5.2), range report on held-out (P4) | T1.2, T2.1 | convert/calibrate.py, convert/fit.py | documented command | KL.bin, params.json, zero range failures | pod |
+| T1.4 | W1 | artifact writer, loader, validator (I2) | T1.2 | tinyllama/artifacts.py | `pytest tests/tinyllama/convert/test_artifacts.py` and W3's `pytest tests/tinyllama/artifacts` | done 2026-11-04, branch feature/tinyllama-w1-artifacts, commits 953c7dc4 (iter_tensors requires a manifest, unknown dtype refused) and 2a211c83 (artifacts.py, convert/tables.py); A01 to A16 tests run against it | small |
+| T2.1 | W2 | integer layer per contract on synthetic weights | T0.2 | tinyllama/reference/ | `pytest tests/tinyllama/reference -k block` and `pytest tests/tinyllama/arithmetic` | done 2026-11-04, branch feature/tinyllama-w2-reference, commits c4a8a3dc (primitives per I7) and b6e1a874 (integer layer); conformance passes on all 11 primitives | RAM <= 8 GB |
+| F1 | W1 | A07 when the directory name differs from the artifact id (D13 (5)); W3 adds a test | T1.4 | tinyllama/artifacts.py; W3: tests/tinyllama/artifacts/ | `pytest tests/tinyllama/artifacts` | renamed directory refused under A07 | small |
+| F2 | W1 | A11 per shift and per class ceiling (contract 5.2, D16); W3 adds a test per shift | T1.4 | tinyllama/artifacts.py; W3: tests/tinyllama/artifacts/ | `pytest tests/tinyllama/artifacts` | each shift above its ceiling refused under A11 | small |
+| T2.2 | W2 | full model, P0 prefix mode, logits, greedy token, hash trace (I3) | T1.4, T2.1 | tinyllama/reference/ | `python -m tinyllama.reference.run --artifact DIR --prompt P0` twice | equal lam_last_sha256 over 2 runs; prefix and window mode equal at real positions; done 2026-11-04 on branch feature/tinyllama-w2-model, commits c8e1f2e8, d7f62c58, 269e2823, 388 passed on the W2 branch, not yet merged into the integration branch | pod, RAM <= 8 GB |
+| T2.3 | W2 | cross check with FlashProve model.py arithmetic where possible (O5) | T2.2 | tinyllama/reference/crosscheck.py | documented command | equal integers or listed differences | pod, torch CPU |
+| T2.4 | W2 | speed up window mode (1024 positions, full size) only if bench_layer measurements on the pod show a need; exact integer results kept | T2.2 | tinyllama/reference/ | bench_layer on the pod, then the T2.2 command | equal lam_last_sha256 before and after; measured time | pod |
+| T3.1 | W3 | independent golden vectors (rounding ties, negatives, clamps, isqrt, norm, softmax division, gate key, argmax, padding) | T0.1 | tests/tinyllama/arithmetic/, conftest.py | `pytest tests/tinyllama/arithmetic` | done 2026-11-04, branch feature/tinyllama-w3-tests, commit 361f8850; 156 passed 1 skipped (conformance test skips while tinyllama.reference is absent) | small |
+| T3.2 | W3 | table recipes and digests vs contract section 6 and FlashProve tables.py | T0.1 | tests/tinyllama/test_tables.py | `pytest tests/tinyllama/test_tables.py` | done 2026-11-04, commit 55f3092d; 20 passed; trope, texp, tsilu rebuild exactly from the float64 recipe and match FlashProve scales/policy_tables.py | small |
+| T3.6 | W3 | follow-ups: conformance test fails, not skips, when tinyllama.reference imports but a primitive (INTERFACES.md I7) is missing; add a full-layer vector; add a rotary multiply then rq vector | T3.1, T3.2 | tests/tinyllama/arithmetic/ | `pytest tests/tinyllama/arithmetic` | done 2026-11-04, branch feature/tinyllama-w3-artifact-tests, commit 9b798da5 | small |
+| T3.5 | W3 | malformed artifact tests, one per I2.4 code | T0.2 | tests/tinyllama/artifacts/ | `pytest tests/tinyllama/artifacts` | done 2026-11-04, commit 01898036 (A01 to A16, synthetic artifact helper) | small |
+| T3.4 | W3 | pod check P5: AutoTokenizer ids vs prompts_v1.json; TL-CAL-1 sha256 | T0.2 | tests/tinyllama/eval/check_inputs.py | documented command | equal ids and sha256 | pod, small |
+| T3.3 | W3 | quality: float32 vs integer, top-1 agreement, logit KL, perplexity on held-out windows, range failures | T2.2 | tests/tinyllama/eval/ | documented command | metrics table, not bit equality | pod |
+| T4.1 | lead | REPRODUCE.md for the AMD workstream | T2.2, T3.3 | docs/tinyllama/REPRODUCE.md | clean checkout run | log | pod |
+
+Integration 2026-11-04: W1 and W3 merged into feature/tinyllama-integer-audit (merges 31ae63fb and c06d05c6). Next: W2 starts T2.1 against INTERFACES.md I7.
+
+Integration 2026-11-04 (round 2): merges e510d8de (W1), 8a6dcda7 (W2), 74153128 (W3); 377 passed, 0 skipped.
+Next: T2.2 (W2, tables from the artifact per D12); W1 follow-ups F1 and F2, then T1.3 (W1); T1.5 and the other pod
+checks (P1 to P5).
+
+W2 T2.2 2026-11-04: done on feature/tinyllama-w2-model (c8e1f2e8, d7f62c58, 269e2823), 388 passed there, not yet
+merged. Open performance item: numpy int64 matmul has no BLAS, so window mode at 1024 positions at full size may
+take hours and first_choice is a Python loop; P0 prefix mode (24 positions) is the milestone and is expected to be
+fine. Measure with bench_layer on the pod; T2.4 only if needed.
+
+Integration 2026-11-04 (round 3): merges c419d358 (W2 T2.2), b2cae17c (W3 T3.3, T3.4, F1/F2 tests), 3ef23887 (W1
+F1, F2, T1.3, T1.5); 520 passed, 1 xpassed. Done: F1, F2, T1.3, T1.5, T2.2, T3.3, T3.4 (code and synthetic tests;
+real-weight runs pending on the pod). Next: restart the pod and run the pod checks P1 to P5, conversion, P4, the
+P0 run, bench_layer and quality_eval; second review of tinyllama/artifacts.py; T4.1; T2.3; T2.4 only if needed.
+
+Integration 2026-11-04 (round 4): W1 T1.6a to c merged (artifact loader hardening, D24 and D25); 579 passed.
+Open: nits 14 to 16 of the second review; pod run still waiting for the pod to start.

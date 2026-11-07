@@ -284,6 +284,10 @@ else
   skip unit "--without-unit-test was given"
 fi
 
+# The two gain-folding constants are a function of the width and head dimension (fold_constants);
+# this pins their values at Maverick's and TinyLlama's shapes. It needs numpy and gguf.
+python_step fold-constants python3 -B "$tests/fold_constants_test.py"
+
 # Over four seeds in a row, oracle.py gives each tensor of its list `COMMITTED` each of the four
 # storage types (F32, Q4_K, Q5_K, Q6_K) once. A command without --eres uses its default, 11.
 # weight_sums.py's --decode-twice, which saves memory, must not change its output.

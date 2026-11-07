@@ -16,6 +16,7 @@
 // "cublasCreate()", "cublasSetStream()", "cublasSetWorkspace()", "Thread Safety",
 // "Results Reproducibility".
 #pragma once
+#include "common/end_name.h"
 #include <cublas_v2.h>
 #include <cstdint>
 #include <cstdio>
@@ -93,11 +94,13 @@ static inline cublasHandle_t blas(cudaStream_t stream, void *work, size_t bytes 
   cublasHandle_t &handle = handle_of_this_thread();
   if (!handle && cublasCreate(&handle) != CUBLAS_STATUS_SUCCESS) {
     printf("GPU error: cuBLAS could not start (cublasCreate failed); the program stops\n");
+    name_the_end("cublas-start"); // the last line of a serving build, whose sentence above is closed
     exit(1);
   }
   if (cublasSetStream(handle, stream ? stream : cudaStreamPerThread) != CUBLAS_STATUS_SUCCESS ||
       cublasSetWorkspace(handle, work, bytes) != CUBLAS_STATUS_SUCCESS) {
     printf("internal error: cuBLAS refused the stream or the work space that it was given; the program stops\n");
+    name_the_end("cublas-start"); // the last line of a serving build, whose sentence above is closed
     exit(1);
   }
   setting() = Setting{stream, work, bytes};
@@ -133,6 +136,7 @@ static inline void gemm_tn(cublasHandle_t handle, int m, int n, int k, const int
     printf("GPU error: the cuBLAS int8 matrix multiply failed with status %d (m %d k %d lda %zu ldb %zu ldc %zu); the "
            "program stops\n",
            (int)status, m, k, lda, ldb, ldc);
+    name_the_end("cublas-product"); // the product (not cublasCreate): a serving build's last line; n is not in the name
     exit(1);
   }
 }

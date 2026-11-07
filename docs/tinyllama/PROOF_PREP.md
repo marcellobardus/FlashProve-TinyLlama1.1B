@@ -1,0 +1,499 @@
+# TinyLlama proof preparation
+
+Status: 2026-11-06, M4 code (PROVING_PLAN T4.1, T4.3, T4.4) and the configuration kit. This page
+records only what was built and run. It does not claim a proof, a verification on real weights, a
+GPU run, or any measured proof size. The proof profile is the unclamped dense form with three table
+digests (O2 option B and O3): a dense model (NE 0) with no gate clamp and no router clamp, carrying
+the digests of the three tables it uses, tsilu, trope and texp. See
+docs/tinyllama/ARITHMETIC_CONTRACT.md section 0 and verifier/docs/parameter-file.md, "The standard
+parameter form".
+
+## The configuration kit
+
+`tinyllama/proof/config_kit.py` writes the configuration files that M1 names.  The required call is
+
+```sh
+python3 -m tinyllama.proof.config_kit --artifact DIR_OR_CONTRACT --out OUT
+```
+
+`--artifact` is either an artifact directory (it must hold `params.json` and `KL.bin`) or the
+contract id `TL-INT-1`.  The contract id alone does not define the layer scales, so that form also
+needs `--kl FILE`; without an artifact directory and without `--kl`, the tool stops with an error
+instead of inventing a `KL.bin`.
+
+The tool writes:
+
+- `policy.txt`: the frame lines `version` to `ranges-part` come from
+  `prover/examples/target_small_f2_roomy/policy.txt`; the `table` line is recomputed for the
+  artifact's shape and vocabulary.  It follows the prover's `table_derive()` rules in
+  `prover/hash_commitment/hf_table_params.h`: `i0` is the smallest even multiple of
+  max(`2^(block_log - table_rows_log)`, `2^ceil_log2(nm)`) that is at least the row length plus
+  `3 * answers`, and `fln` is at least `ceil_log2(i0 + nm) + 1`.  The model lines are dense
+  (`NE 0`, `ll 1`, no experts), use the artifact's `params.json` for `L`, `d`, `H`, `G`, `dh`, `f`,
+  `V`, `MF`, `KF`, `s`, `eps1`, `eps2` and `epsF`.  The digit forms `hv`, `ho`, `hgD`, `huD` and
+  `hdD` follow the artifact's largest shift of each kind (`hq` is 2); `kFD` is computed from the
+  softmax table length, `dh` and the attention shift (`af-policy-kF`), and `la` caps `la - lt` at
+  `log2(dh)` as well as the divisibility rule (`af-shape-la`).  The acceptance policy is the exact
+  match (`C 256`, `theta 256`, `cap 0`, `sh 8`, `sT 4`, `F 24`).  There is no `gcl`, no `rcl`, no
+  `eg` or `smax`.
+  - It writes the three table digest lines `tsilu`, `trope` and `texp` (eight words each, in that
+    order; never `tsig`, which a dense model does not use).  They are computed with
+    `tinyllama.convert.tables` for the kit's own window, head and table parameters, so they equal
+    the tables `cp_verify` recomputes and compares; when the artifact pins digests they are checked
+    against them (the table-identity guard).
+  - The layer call lines are built from the digit forms, not fixed: each high segment (`QKH`, `GH`,
+    `UH`, `OH`, `DH`, `VH`) is placed in an R8 call for form 1, an R16 call for form 2, or left out
+    for form 0; `ROW`, the base R16 segments, `FC` and `FL` are always present; no MoE segment
+    (`XR`, `LR`, `LT`, `DD`, `LH`, `SEL`, `L3`, `CLR`, `MR`, `G0`, `CG`) appears.  A fixed list that
+    named a high segment the verifier did not expect was the M1 `policy-call-list` failure.
+    `iota_*`, `iotaA_0` and `iotaH_*` are computed by the same rules as
+    `verifier/tests/forest_lines.py` and the attention and output-head call layouts.  `--lt N`
+    selects the window (6 to 10; M1 asks for 6 and 10); lower values are refused because the prover
+    requires `lB >= 4` and this kit derives `lB = min(6, N - 2)`.
+- `KL.bin`: copied byte for byte from the artifact.
+- `layout.txt`: written only when a usable `cp_verify` is available.  The tool runs
+  `cp_verify -plan arrays OUT 128` and then `prover/tools/pack_layout.py --arrays ...` with the link
+  row length, as M1 and `prover/docs/layout.md` prescribe.  Use `--cp-verify PATH` (and optionally
+  `--pack-layout PATH`) or place `cp_verify` in `bin/`.  Without the verifier it writes the other two
+  files and says on standard error that `layout.txt` was not written.  `--no-layout` suppresses the
+  attempt.
+
+`--artifact-id ID` checks `sha256(manifest.json)` against a caller-supplied expected id, so a wrong
+artifact id is refused before any file is written.
+
+The unit tests use a small synthetic artifact built by `tests/tinyllama/reference/tiny_artifact.py`;
+they cover determinism, the byte-for-byte `KL.bin`, the dense policy lines, the call lists, the
+digest lines, the computed `kFD`, the table capacity and the wrong-id refusal.
+
+## The request file
+
+`tinyllama/proof/make_request.py` writes a request file from a prompt and reply in the format of
+`prover/examples/TARGET-KITS.md`: the window of T tokens (`p + a`, then id 0 padding) followed by
+`r = len(p) - 1` and `e = len(p) + len(a) - 1`.  The reply tokens are given directly or appended
+greedily from our CPU integer reference (`tinyllama.reference.model.forward`), never the float
+model.  The first real request is P0's 24 ids then the next token 1576 then padding, with r 23 and
+e 24:
+
+```sh
+python3 -m tinyllama.proof.make_request --prompt P0 --reply-ids 1576 --window 64 --out p0.req
+```
+
+`--greedy N --artifact DIR` instead appends N reply tokens that the reference chooses.  The file is
+created new and owner-readable only.
+
+## Dense standard form verified locally (2026-11-06)
+
+The dense standard form (T4.3) and the kit and request changes (config_kit, T4.4) were exercised on
+this box with a locally built `cp_verify`.  Note on that build: the box has no `g++`, so the build
+used the sandbox's `g++ 11.4.0` through a wrapper that drops two GCC 12 and later hardening flags
+(`-ftrivial-auto-var-init=zero`); this is **not** the production build (g++ 13 and the full
+hardening set), and was used only to drive the planner for these checks. No GPU, no weights commit
+and no proof were run, and no proof size, table size or security bits were measured.
+
+What ran and passed:
+
+- `verifier/tests/served_form_test.py` on `prover/tests/configurations/pinned`: all as expected,
+  including the new dense cases (a dense kit with no digest lines misses only `table-digests`; a
+  dense kit with the three digests meets every condition; a dense kit with the four digest lines or
+  with a clamp line is refused; the MoE cases are unchanged).
+- `config_kit` at TinyLlama's shape (L 22, d 2048, H 32, G 4, dh 64, f 5632, V 32000, NE 0) from
+  the contract id and a representative `KL.bin` (the M3 shift ranges, kq 27, kk 25, kd 17, the rest
+  small), lt 10: `cp_verify -plan arrays` and `cp_verify -plan request` both end status 4, print no
+  `not the standard parameter form` line, and `-plan request` prints `this program's three public
+  tables match the parameter file's digests`.  The call lines placed `DH` in the R8 call (kd 17 is
+  digit form 1) and left `GH`, `UH`, `OH`, `VH` out (their shifts are form 0).  The computed
+  `tsilu0`, `trope0` and `texp0` were 2048398297, 2141436500 and 3648852807, equal to
+  docs/tinyllama/ARITHMETIC_CONTRACT.md section 6.
+
+What still needs a host with the real artifact and the production build: the same calls on the real
+`KL.bin`, `-plan accounting` for the table, proof and bits figures, and then M5 and M6 on an H100.
+Use the commands under "Exact commands for a CPU pod" below.
+
+## M1 planning calls
+
+### Build attempt on this box (measured)
+
+The box has no C++ compiler front end.  The exact command
+
+```sh
+mkdir -p /tmp/tl-proof-verify
+verifier/build.sh - /tmp/tl-proof-verify
+```
+
+printed
+
+```text
+build=93afdaf592393a54ebd17b681d1c03295eb883f0161ff0e6ab872a3b39939595 dw=8
+compiling cp_verify.cpp: one compiler call of one to two minutes, which prints nothing while it runs
+verifier/build.sh: line 351: g++: command not found
+build.sh: the build failed (status 127). There is no cp_verify in /tmp/tl-proof-verify. See the messages above, if any, and build again.
+```
+
+and ended with exit code 127.  `command -v g++` printed nothing in the same environment.  This is
+the reason no planning call ran here.
+
+For completeness, the measured memory at that time (`free -h`) was
+
+```text
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi        13Gi       989Mi        90Mi       2.0Gi       2.6Gi
+```
+
+so RAM was not the blocking reason for this attempt; the missing compiler was.
+
+### Table size, proof size and security bits (not measured)
+
+These figures are **not measured**.  `cp_verify` could not be built and its planning calls could not
+run here, because `g++` is absent (exit code 127 above).  No number is copied from another model's
+run, and the table line generated by the kit is not claimed to be the planner's final table.  The
+planner figures must be produced on a machine with g++ 13 or later, with the commands below.
+
+### Exact commands for a CPU pod
+
+Run these from the repository root on a CPU pod that has g++ 13 or later.  `ARTIFACT` is the
+TL-INT-1 artifact directory; its `params.json` and `KL.bin` must be present.
+
+```sh
+mkdir -p /tmp/tl-verify-bin
+verifier/build.sh - /tmp/tl-verify-bin
+
+ARTIFACT=/path/to/TL-INT-1/ARTIFACT_ID
+for LT in 6 10; do
+  python3 -m tinyllama.proof.config_kit \
+    --artifact "$ARTIFACT" --out "/tmp/tl-kit-lt$LT" --lt "$LT" \
+    --cp-verify /tmp/tl-verify-bin/cp_verify
+  /tmp/tl-verify-bin/cp_verify -plan request "/tmp/tl-kit-lt$LT" 128 \
+    > "/tmp/tl-kit-lt$LT/plan-request.txt"
+  /tmp/tl-verify-bin/cp_verify -plan accounting "/tmp/tl-kit-lt$LT" 128 \
+    > "/tmp/tl-kit-lt$LT/plan-accounting.txt"
+  /tmp/tl-verify-bin/cp_verify -plan arrays "/tmp/tl-kit-lt$LT" 128 \
+    > "/tmp/tl-kit-lt$LT/plan-arrays.txt"
+done
+```
+
+A successful `-plan arrays` call exits 4, which the shell loop above does not treat as a failure to
+be repaired.  `config_kit` already made `layout.txt` from that call and `pack_layout.py`.  The files
+to record are `plan-accounting.txt` (the `proof`, `key`, `entry` and bits lines) and
+`plan-request.txt`.  With the dense standard form (T4.3) a dense kit that carries the three digests
+no longer prints `plan: not the standard parameter form`; `plan-request.txt` should instead hold the
+line `plan: this program's three public tables match the parameter file's digests (lines tsilu0,
+trope and texp)` and no `not the standard parameter form` line.  Until those calls run on the real
+artifact's `KL.bin`, table size, proof size and security bits remain not measured.
+
+## M3 pod runbook
+
+Status: work item W-B.  The two scripts below exist and their synthetic tests pass.  **Nothing in
+this section has been run on real weights**; the commands and expected shapes are the pod recipe,
+not measured M3 results.  M3 needs no GPU, no prover build and no FlashProve edit.  Use the approved
+`cpu3g-8-32` pod and follow `work/scratch/runpod_pod2.md` and
+[REPRODUCE.md](REPRODUCE.md): one pod at a time, stopped when idle.  Never echo `RUNPOD_API_KEY`;
+the examples only pass it through the environment.  The container disk is wiped when the pod stops,
+so copy every report off the pod before stopping it.
+
+Inputs: a validated TL-INT-1 artifact directory.  Run 3's artifact id is
+`1d8e5cf46c89d951c1c449dc3c03d963f32176360a016d78e4d2537d39b088a9` (REPRODUCE.md, D35).  If that
+artifact is not preserved outside the pod, rebuild it before running these scripts; the M3 scripts
+do not create it.  [REPRODUCE.md](REPRODUCE.md) records the pod, environment and timings only, so
+follow the pod command order in `work/DECISIONS.md:184-191` instead.  In that order, download the
+checkpoint at the pinned revision (`docs/tinyllama/CHECKPOINT_MANIFEST.md:9-11`) into `/workspace/ckpt`
+with the Hugging Face CLI, for example:
+
+```sh
+hf download TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+  --revision fe8a4ea1ffedaf415f4da2f062534de366a451e6 \
+  --local-dir /workspace/ckpt
+```
+
+Then step 1 of the DECISIONS order writes `/workspace/calib` and step 5 builds the artifact:
+
+```sh
+mkdir -p /workspace/calib
+WIKITEXT_PARQUET=/path/to/wikitext-2-raw-v1/train-00000-of-00001.parquet
+python3 tests/tinyllama/eval/check_inputs.py \
+  --checkpoint-dir /workspace/ckpt --parquet "$WIKITEXT_PARQUET" \
+  --out p5.json \
+  --fit-npy /workspace/calib/fit.npy \
+  --heldout-npy /workspace/calib/heldout.npy
+PYTHONPATH=. python3 -m tinyllama.convert.run \
+  --checkpoint /workspace/ckpt --out /workspace/repo/artifacts/TL-INT-1 \
+  --calib /workspace/calib/fit.npy --calib-sha256 FIT_SHA256 \
+  --heldout /workspace/calib/heldout.npy --heldout-sha256 HELDOUT_SHA256 \
+  --workers 8 \
+  --report /workspace/repo/artifacts/TL-INT-1/range-report.json
+```
+
+Steps 2 to 4 of that order are the P1, P2 and P3 checks and can be skipped when only the artifact is
+needed.  `tinyllama/convert/run.py:1-8` states the same conversion call.
+
+### Environment
+
+Use the Python 3.13 environment from run 3, because `crosscheck_full` needs torch CPU:
+
+```sh
+pip install uv
+uv venv --python 3.13 /workspace/venv313
+uv pip install --python /workspace/venv313/bin/python \
+  numpy==2.5.4 pytest==9.2.0
+uv pip install --python /workspace/venv313/bin/python torch==2.9.1 \
+  --index-url https://download.pytorch.org/whl/cpu
+cd /workspace/repo
+/workspace/venv313/bin/python -m pytest tests/tinyllama/proof -q
+```
+
+The torch tests run on the pod, so the expected count is the torch count measured on this box, not
+the smaller count below.  The pod's torch 2.9.1 has not been tried.
+
+Measured on this box (2026-11-05) with the two interpreters named:
+
+```text
+$ python3 -m pytest tests/tinyllama/proof -q
+11 passed, 1 skipped
+$ /workspace/tl-torch-venv/bin/python -m pytest tests/tinyllama/proof -q
+14 passed
+```
+
+`python3` is Python 3.13.5 without torch, so the torch tests skip.  The venv is Python 3.13.5 with
+torch 2.15.0+cpu, so all 14 run.  `/workspace/venv313/bin/python` is the pod's path, created by the
+commands above; it does not exist on this box.
+
+### 1. Gate-key margin on the four prompts
+
+```sh
+export ARTIFACT=/workspace/repo/artifacts/TL-INT-1/1d8e5cf46c89d951c1c449dc3c03d963f32176360a016d78e4d2537d39b088a9
+mkdir -p /workspace/reports/gate-margin
+for P in P0 P1 P2 P3; do
+  /workspace/venv313/bin/python -m tinyllama.proof.gate_margin \
+    --artifact "$ARTIFACT" --prompt "$P" \
+    > "/workspace/reports/gate-margin/$P.txt"
+done
+grep -L 'outside_16bit 0 all_layers_fit_16bit yes' \
+  /workspace/reports/gate-margin/P*.txt || true
+```
+
+Each file has one line for each of the 22 layers (`layer 00` to `layer 21`) and a final `summary`
+line.  O2 option B is the no-`gcl` form, where `key = gw` and condition 6 is on `gw`; this is the
+`gw` statistic of PROVING_PLAN T3.1.  Success is `outside_16bit 0` and `fits_16bit yes` on every
+layer, with `all_layers_fit_16bit yes` in the summary, and exit code 0.  The last command prints no
+file name under that condition.  A nonzero exit code reports keys outside the interval as well as a
+reference range failure.  If any layer reports a nonzero `outside_16bit`, option B of O2 fails on
+that prompt: stop, keep the file, and report it.  The per-layer `max_abs_gw` values are not known
+until the run; do not fill them in from anything else.
+
+### 2. Gate-key margin on the 40 calibration windows
+
+The same forward pass over 1024 positions is the expensive part of P4.  Run one process per window,
+eight at a time, using the `--window-file` and `--window-index` options:
+
+```sh
+mkdir -p /workspace/reports/gate-margin-windows
+export FILE SET
+for SET in heldout fit; do
+  FILE="/workspace/calib/$SET.npy"
+  N=$(/workspace/venv313/bin/python -c \
+    'import numpy as np,sys; print(np.load(sys.argv[1], allow_pickle=False).shape[0])' "$FILE")
+  seq 0 $((N - 1)) | xargs -P 8 -I{} bash -c '
+    /workspace/venv313/bin/python -m tinyllama.proof.gate_margin \
+      --artifact "$ARTIFACT" --window-file "$FILE" --window-index "$1" \
+      > "/workspace/reports/gate-margin-windows/$SET-$1.txt"' _ {}
+done
+grep -L 'outside_16bit 0 all_layers_fit_16bit yes' \
+  /workspace/reports/gate-margin-windows/*.txt || true
+```
+
+Expected: 8 files for `heldout` and 32 for `fit`; the last command prints no file name, meaning every
+window had zero keys outside 16 bits.  A printed file name is the finding; keep it and stop.
+
+No wall time for `gate_margin` itself has been measured.  The closest sourced figures are run 3's P4
+range report, which uses the same integer forward: 8 held-out windows took `25:53.79` and 32 fit
+windows `1:43:45`, with 8 workers and `1364.7` to `1377.4` s per window.  The wall times are in
+[REPRODUCE.md](REPRODUCE.md):33 and `work/STATUS.md:102`; the per-window range is measured in
+`work/STATUS.md:102`.  PROVING_PLAN M3 budgets about 3.5 h for the pod session.
+
+### 3. Full-dimensional layer cross check
+
+Run layer 0 first.  The loop over layers 1 to 21 runs only when layer 0 is clean:
+
+```sh
+mkdir -p /workspace/reports/crosscheck
+run_layer() {
+  /workspace/venv313/bin/python -m tinyllama.proof.crosscheck_full \
+    --artifact "$ARTIFACT" --prompt P0 --layer "$1" \
+    > "/workspace/reports/crosscheck/P0-layer$1.txt" \
+    2> "/workspace/reports/crosscheck/P0-layer$1.err"
+}
+run_layer 0
+if grep -q 'DIFFERENT\|NOT-COMPARABLE' /workspace/reports/crosscheck/P0-layer0.txt; then
+  echo "layer 0 is a finding: stop and keep both files"
+else
+  for L in $(seq 1 21); do
+    run_layer "$L"
+  done
+  grep -l 'DIFFERENT\|NOT-COMPARABLE' /workspace/reports/crosscheck/*.txt || true
+fi
+```
+
+Each file has 15 comparison lines (9 attention, 5 feed-forward, 1 `x_out`), all ending `EQUAL`.
+Expected: no file name from the last `grep`, and exit code 0 from each call.  A stderr `note:` may
+say that `Parameters(...)` refused the dense artifact and was bypassed; that is the known
+`NE = 0`/`gcl` validation bypass (O2), not a difference.  Any `DIFFERENT` or `NOT-COMPARABLE` line is
+a finding: stop, keep both files, and report the first differing index.  No duration has been
+measured for `crosscheck_full`; time layer 0 before starting all 22.
+
+### Stop the pod
+
+Copy `/workspace/reports/` to the box first, then stop the pod recorded in REPRODUCE.md (currently
+`roensk5w2gn6am`) and verify `EXITED`:
+
+```sh
+export POD_ID=roensk5w2gn6am
+curl -X POST -H "Authorization: Bearer $RUNPOD_API_KEY" \
+  "https://rest.runpod.io/v1/pods/$POD_ID/stop"
+curl -s -H "Authorization: Bearer $RUNPOD_API_KEY" \
+  "https://rest.runpod.io/v1/pods/$POD_ID" | grep -o '"desiredStatus":"[^"]*"'
+```
+
+Record the start and stop times and the pod minutes.  Do not print the key, and do not leave the pod
+running for a later step.
+
+## M2 dense synthetic proof: cause of the UNFIT failure and how to confirm the fix
+
+Status: 2026-11-06, work item M2 (PROVING_PLAN "M2. Dense synthetic proofs"). The 2026-11-06 H100
+session reached the dense kit but cp_prove wrote an empty `example.failed` instead of a proof, with
+the line `seat 0, request example: failed: cause 2, flags 00000020`. Cause 2 is `End::Refused` and
+flags 0x20 is `UNFIT`: a forward-pass value left its range (prover/prover/ends.h:49,
+prover/common/slot_flags.h). There were two causes, found one after the other. The first was a code
+bug in `moe_at_layer()`; a short H100 confirm of that fix on 2026-11-06 hit the same `UNFIT`, which
+exposed the second, a too-tight gate scale in the kit. This section records both causes, their
+fixes, and the exact commands to confirm T2.3 on the next H100. Nothing below is a measured proof;
+the GPU run that produces a dense proof file has not yet succeeded.
+
+### First cause (code): the forward pass ran the MoE path at NE 0
+
+A model with `NE 0` is dense at every layer (docs/model.md; PROVING_PLAN M2, section 3). The rest of
+the prover already reads it that way: `mo = NE > 0` in prover/prover/inputs.cuh:237 and
+prover/weights_commitment/kernels.cuh:108, and the verifier uses `MOE = NE > 0` in
+verifier/src/vf_weights_layout.h:28,39. Only the forward pass disagreed. It picked the
+mixture-of-experts path from `moe_at_layer(prof, l)`, which was `prof >= 3 && (l & 1)` and never
+looked at `NE` (prover/prover/layout.h). So at `NE 0` with the whole-model profile `prof 20` the
+forward pass still ran `ffn_moe()` on the odd layers (prover/prover/forward.cuh:1558), against an
+all-dense layout whose router and clamp segments the dense kit had removed. The router kernels then
+launched over `T * NE = 0` threads and left the logits unwritten, `k_route()` chose a nonexistent
+expert and a stray score, and a forward-pass value left its range, which set `UNFIT`. The MoE
+control kit has `NE > 0`, so its routing is well defined and it proved. `served_form_test.py` only
+runs the verifier's planning calls on a dense kit, never cp_prove, so this path had never run.
+
+### The fix for the first cause
+
+`moe_at_layer()` now takes `NE` and returns `prof >= 3 && (l & 1) && NE > 0`
+(prover/prover/layout.h), and its two call sites pass the shape's `NE`
+(prover/prover/forward.cuh:108 and :1558). With `NE 0` every layer is now dense in the forward pass
+too, matching the committer, the hiding stage and the verifier. The CPU test
+`prover/tests/moe_at_layer_test.cpp` (target `moe_at_layer_test` in prover/build.sh) pins this.
+
+### Second cause (kit scale): the dense gate has no clamp, so kg must be larger
+
+With the code fixed, the 2026-11-06 confirm ran `ffn_dense()` on every layer and hit the same
+`UNFIT`. The cause is the gating scale. A dense kit removes the line `gcl` with the experts
+(no_experts() drops it, as `served_form_test.py` does), so the gate has no clamp. Without the clamp
+the gating projection's quotient `q = round(gate_acc / 2^kg)` must land in the SiLU key window
+`[-32768, 32639]` on its own (`gate_key()` with `gcl` off, prover/prover/forward.cuh:497-508, and the
+flag `E_GI`). A clamped gate only needs `|q| < 2^22`: its high part `gh` is clamped to `+-127`, so
+`gate_key()` tolerates `h` in `[-16384, 16383]` (the `16384 : 32768` split at forward.cuh:1345). Every
+base kit, including the roomy ones, sets `kg 9` with `gcl 1`
+(prover/tests/configurations/pinned and prover/examples/target_small_f2_roomy). At `kg 9` under
+made-up-blocks weights the gate quotient needs the clamp, so once the dense kit removes it `q` leaves
+the window and the forward pass sets `UNFIT`. `served_form_test.py` only runs the verifier's planning
+calls, which never evaluate a gate quotient, so this too had never run before the GPU.
+
+### The fix for the second cause
+
+`make_dense_kit.py` now raises `kg` in `KL.bin` for every layer by `GATE_SHIFT_HEADROOM` (8 bits),
+capped at the gate digit form's maximum shift (`roomy_gate()`). Dividing `q` by `2^8` brings the
+clamp headroom (about `2^22`) below the window (about `2^15`) with margin over the `32639 < 2^15`
+upper edge; for the pinned base `kg` goes from 9 to 17, inside the `hgD 1` limit of 24
+(layer_words_fit() in prover/prover/forward.cuh). This is a roomier scale, allowed for a synthetic
+proof; it disables no range or `UNFIT` check, and it does not change the verifier's planning calls
+(the arrays plan and the standard-form conditions read the shape, not `kg`), so the expected verify
+outcome is unchanged. `tests/tinyllama/proof/test_make_dense_kit.py` pins the raised `kg`. No other
+forward-pass value is at risk: attention keeps the base kit's scales and has no clamp dependency, and
+the raised `kg` only shrinks the gate quotient, so the SiLU input, the down projection and the
+residual stay within the range the base kit's dense (even) layers already proved.
+
+### Building the dense kit off the pod
+
+`tinyllama/proof/make_dense_kit.py` writes the dense kit from a base MoE kit, with the same policy
+transform as `served_form_test.py`'s no_experts case plus the raised `kg` of the second fix above.
+The M2 stand-in derives from prover/tests/configurations/pinned (L 8, ll 2, lt 6 so T 64, d 512),
+giving the same shape with `NE 0`. With a built cp_verify it also writes layout.txt:
+
+```sh
+python3 -m tinyllama.proof.make_dense_kit \
+  --base prover/tests/configurations/pinned \
+  --out  /tmp/dense-kit \
+  --cp-verify /path/to/cp_verify
+```
+
+`cp_verify -plan arrays` on this kit is expected to exit 4 (the planner refuses the dense form; that
+is the input to pack_layout, not a failure). The tiny shape of PROVING_PLAN T2.3 (L 2, d 64, T 64)
+is still refused by the planner (shape-la, shape-call-H-R16a, prover-only-D at D 32); the L 8 d 512
+stand-in is used instead and is a legitimate small dense shape. Do not loosen those shape checks for
+this run.
+
+### Confirming T2.3 on the next H100 (test build only, no FlashProve edit beyond this branch)
+
+Run from the repository root on an H100 host that meets prover/docs/build.md (driver 580 or later,
+`madvise(MADV_WIPEONFORK)`, SHA extensions). This uses the test build, which carries the fix.
+
+```sh
+# 1. test programs: cp_commit, cp_prove, cp_verify with the test options
+cd prover && ./build.sh tests && cd ..
+BUILD=prover/build/hc/test_build        # OUT defaults to prover/build
+
+# 2. the host CPU regression test for the fix (exit 0, all checks "as wanted")
+cd prover && ./build.sh moe_at_layer_test && cd ..
+prover/build/*/moe_at_layer_test        # the path build.sh prints
+
+# 3. the dense kit with layout.txt
+python3 -m tinyllama.proof.make_dense_kit \
+  --base prover/tests/configurations/pinned --out /tmp/dense-kit \
+  --cp-verify "$BUILD/cp_verify"
+
+# 4. commit, prove and verify on synthetic (made-up) weights, test seed and test bits.
+# Create only config/ and in/. Do NOT pre-create ivk/, isk/ or out/: cp_commit and cp_prove create
+# them themselves, mode 0700, and refuse a directory that already exists.
+WORK=/tmp/dense-run
+mkdir -p "$WORK/config" "$WORK/in"
+cp /tmp/dense-kit/policy.txt /tmp/dense-kit/KL.bin /tmp/dense-kit/layout.txt "$WORK/config/"
+# The test seed must not be all zero: cp_prove refuses an all-zero -test-seed (hc-key-file). Use
+# urandom, as the official prover tests do; do not use /dev/zero.
+head -c 32 /dev/urandom > "$WORK/seed"
+python3 -I -B prover/tools/make_request.py "$WORK/config/policy.txt" "$WORK/in/example.req"
+
+"$BUILD/cp_commit" -weights made-up-blocks -config "$WORK/config" -M 1 \
+  -ivk "$WORK/ivk" -isk "$WORK/isk" -test-seed "$WORK/seed" -test-bits 32
+ID=$("$BUILD/cp_commit" -weights made-up-blocks -config "$WORK/config" -M 1 \
+  -ivk "$WORK/ivk" -isk "$WORK/isk" -test-seed "$WORK/seed" -test-bits 32 2>/dev/null \
+  | sed -n 's/^commitment ID: //p' | tr -d ' ')   # or read it from the first call's log
+
+"$BUILD/cp_prove" -isk "$WORK/isk" -in "$WORK/in" -out "$WORK/out"
+
+"$BUILD/cp_verify" "$WORK/config" "$WORK/ivk" "$WORK/in/example.req" \
+  "$WORK/out/example.y" "$WORK/out/example.proof" -id "$ID"
+```
+
+Expected after the fix, to be recorded only once the run is done:
+
+- cp_commit exits 0 and prints a `commitment ID`.
+- cp_prove writes `example.proof` and `example.y` into `$WORK/out`, and no `example.failed`. The
+  earlier line `seat 0, request example: failed: cause 2, flags 00000020` must not appear.
+- cp_verify exits 14 and prints `NOT-A-VERIFICATION` with the line `not the standard parameter form:`
+  listing only the dense items (`routed-experts`, `both-clamps`, `table-digests`), plus
+  `no-proof-of-work` if the test bits print it. No other cause, and no YES (a dense YES needs the
+  verifier policy change O1 / T4.3, which is not in this branch).
+
+A recorded proof from the 2026-11-06 kg=17 confirm, including `ivk/`, lives in `docs/tinyllama/recorded/t23-dense-kg17/`. You can run `cp_verify` on that package without running `cp_commit` or `cp_prove`. See that directory's README.
+
+The pod harness that samples GPU memory and times each step is
+`work/pod_reports/2026-11-06-m2/scripts/run_dense_once.sh`; the facts above do not need it. That
+script predates the harness notes above (it pre-creates ivk/isk/out and seeds from /dev/zero), so
+prefer the commands here, or fix the script's seed and drop its ivk/isk/out mkdir before reusing it.

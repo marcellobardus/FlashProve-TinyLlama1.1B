@@ -30,6 +30,7 @@ inline void *Prover::shared_alloc(int g, size_t bytes, bool middle) {
       printf("internal error: shared memory: sub-proof %d requests %zu bytes for buffer %zu, but sub-proof 0 requested "
              "%zu there\n", g,
              bytes, ai, ai < arena.size() ? arenaB[ai] : (size_t)0);
+      name_the_end("shared-buffer"); // serving: p258 end 1 shared-buffer (kept as an exit(2))
       exit(2);
     }
     p = arena[ai++];
@@ -134,7 +135,7 @@ inline int Prover::g_setup_layout(int g) {
   }
   if ((int)L.call.size() != NC) {
     printf("internal error: the layout has a different number of calls from the parameter file\n");
-    return 2;
+    return refused("layout-calls"); // serving: p258 end 1 layout-calls
   }
   return 0;
 }
@@ -191,18 +192,18 @@ inline int Prover::g_setup_matrices(int g) {
     if (layer_forest.dT < la) {
       printf("policy: a tree of a layer sub-proof's lookups must have at least 2^la keys; raise nmin "
              "[forest-depth-G]\n");
-      return 2;
+      return refused("forest-depth-G"); // serving: p258 end 1 forest-depth-G
     }
     if (lmb < 5 || lmb > layer_forest.kT + 5) {
       printf("policy: the line lmb must be from 5 to %d [forest-planes]\n", layer_forest.kT + 5);
-      return 2;
+      return refused("forest-planes"); // serving: p258 end 1 forest-planes
     }
     for (int c = 0; c < NC; c++)
       if (io[c] != layer_forest.iota[c]) {
         printf("policy: the line iota_%d must be %d: log2 of the call's keys, %d, minus log2 of a tree's keys, %d "
                "[shape-call]\n",
                c, layer_forest.iota[c], K.n[c], layer_forest.dT);
-        return 2;
+        return refused("shape-call"); // serving: p258 end 1 shape-call
       }
   }
   // Matrix b: bit j of the multiplicity of row t of call c's table is byte (c * 2^kT + t) * 32 + j,
@@ -224,7 +225,7 @@ inline int Prover::g_setup_matrices(int g) {
   K.NR = (int)K.M.size();
   if (K.xg.first != iXG || K.xn.first != iXN) {
     printf("internal error: the list numbers of xn and xg do not match the expected indices iXN and iXG\n");
-    return 2;
+    return refused("border-index"); // serving: p258 end 1 border-index
   }
   K.nWT = 0;
   for (int kd : kinds) {
@@ -237,12 +238,12 @@ inline int Prover::g_setup_matrices(int g) {
       printf("internal error: the weight source holds a different number of cells of kind %s from what the prover "
              "expects\n",
              kn.c_str());
-      return 2;
+      return refused("cells-number"); // serving: p258 end 1 cells-number
     }
 
     if (policy["wb_" + kn] != 13) {
       printf("policy: the line wb_%s must be 13\n", kn.c_str());
-      return 2;
+      return refused("policy-weight-kind"); // serving: p258 end 1 policy-weight-kind
     }
     w.buf = slab;
     w.lm = LM{-1, (int)parts_of_kind(kd)};
@@ -605,7 +606,7 @@ inline int Prover::g_setup_tables(int g) {
   }
   if (w != K.sW + K.nW) {
     printf("internal error: the tables as placed do not fill the planned number of table elements\n");
-    return 2;
+    return refused("table-fill"); // serving: p258 end 1 table-fill
   }
   w = K.sWT;
   for (auto &q : K.wk) {
@@ -639,7 +640,7 @@ inline int Prover::g_setup_tables(int g) {
     if (K.lJ[K.g.callOf("QK")] - ldh > 20) { // `g_weight_tables` writes 2^(lJ - ldh) elements there
       printf("internal error: the call QK needs a table of 2^%d elements where the set-up has room for 2^20\n",
              K.lJ[K.g.callOf("QK")] - ldh);
-      return 2;
+      return refused("qk-room"); // serving: p258 end 1 qk-room
     }
     const size_t VV = std::max(dh, mo ? NE : 0), KK = std::max(d, mo ? fe : 0);
     alloc_elements(g, K.Cm, VV * KK);
@@ -702,7 +703,7 @@ inline int Prover::g_setup_slots(int g) {
 
     if (K.qa.first != iQA) {
       printf("internal error: the list number of qa does not match its expected position\n");
-      return 2;
+      return refused("qa-list"); // serving: p258 end 1 qa-list
     }
     shr[iQA] = 1;
 
@@ -867,10 +868,12 @@ inline int Prover::g_setup_token_ends(int g) {
       }
   if (ti != q.NTm) {
     printf("internal error: the sum-check over tokens has %d terms, but %d were planned\n", ti, q.NTm);
+    name_the_end("token-terms"); // serving: p258 end 1 token-terms (kept as a return 4)
     return 4;
   }
   if (std::count(value.begin(), value.end(), nullptr)) {
     printf("internal error: a value that the sum-check over tokens is to show stands in none of its terms\n");
+    name_the_end("token-terms"); // serving: p258 end 1 token-terms (kept as a return 4)
     return 4;
   }
   q.end.setup(q.eng.shape, value, terms);
@@ -931,7 +934,7 @@ inline int Prover::g_setup_end(int g) {
   if (g > 0 && ai != arena.size()) {
     printf("internal error: sub-proof %d used %zu of %zu shared buffers, but it should use all of them\n", g, ai,
            arena.size());
-    return 2;
+    return refused("shared-buffer"); // serving: p258 end 1 shared-buffer
   }
   thW = std::max(thW, std::max<size_t>(EWORDS * K.nW, EWORDS * K.nWT));
   return 0;

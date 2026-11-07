@@ -170,8 +170,15 @@ struct LayerLayout {
     exit(1);
   }
 };
-static inline bool moe_at_layer(int prof, int l) {
-  return prof >= 3 && (l & 1);
+// A layer is a mixture-of-experts layer iff the model has routed experts (NE > 0) and the layer is
+// odd. NE > 0 must be part of the test: with NE 0 every layer is dense (docs/model.md; PROVING_PLAN
+// M2), and the rest of the prover already treats dense that way (mo = NE > 0 in
+// prover/prover/inputs.cuh, prover/weights_commitment/kernels.cuh), as does the verifier (MOE = NE
+// > 0 in verifier/src/vf_weights_layout.h). Without the NE > 0 clause the forward pass alone ran
+// ffn_moe() on odd layers at NE 0, against an all-dense layout, and a forward-pass value left its
+// range (UNFIT).
+static inline bool moe_at_layer(int prof, int l, int NE) {
+  return prof >= 3 && (l & 1) && NE > 0;
 }
 // Exits with code 2 if it rejects the shape.
 static inline LayerLayout make_layer_layout(const LayerShape &s) {

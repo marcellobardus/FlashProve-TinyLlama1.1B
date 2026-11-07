@@ -609,7 +609,11 @@ static inline bool read_key(const std::string &path, Key &key) {
 // configuration files that have this digest, no prompt can drive a value of the forward pass out of
 // its range (prover/weights_commitment/worst_case.cuh). cp_prove starts only if the line has h_par
 // of its own configuration files (Prover::the_ranges_are_guarded() in prover/prover/isk.cuh); a
-// test build's cp_prove also starts if the line "seed test" is present.
+// test build's cp_prove also starts if the line "seed test" is present. A commitment to public
+// weights ("seed public") may have no line ranges: under -public-weights cp_commit leaves the check
+// out unless -worst-case forces it, and cp_prove given -public-weights then starts without the line
+// (nothing is hidden, so a weight-dependent "failed" reveals nothing). The "if and only if" above
+// still holds: no line ranges is ever written unless the check ran and passed.
 // seed test: cp_commit read the seed from a file given with the test option -test-seed, so nothing
 // is hidden. A production build has no -test-seed, and its cp_prove rejects a commitment that has
 // the line [cp-isk-seed-test]. Its cp_commit has the same check in the code for a call that adds

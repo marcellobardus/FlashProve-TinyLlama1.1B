@@ -20,14 +20,13 @@ struct GgufSource : BlockSource {
   Shape shape; // the expected shape, from the prover's parameter file; set it before open()
 
   // Exits with a message if a file is missing or malformed, or the model and `shape` disagree.
-  // The widths 5120 and 128 are fixed because the constants in fold::reads() assume them.
+  // fold::reads() computes its constants from the width and head dimension, so any shape is read;
+  // the check below still requires the model to match the parameter file's shape.
   // All files are opened through one directory handle (gguf::Model::open_folder(),
   // prover/weights_commitment/gguf_file.h), so `shards`, an earlier listing, is used only in
   // messages; it must not be empty.
   void open(const std::string &setup_dir, const std::vector<std::string> &shards) {
     file_.open_folder(setup_dir);
-    if (file_.embedding_length != 5120 || file_.key_length != 128)
-      stop("only models of width 5120 and head width 128 are supported", shards[0]);
     if ((uint64_t)shape.d != file_.embedding_length || (uint64_t)shape.dh != file_.key_length ||
         (uint64_t)shape.layers != file_.block_count)
       stop("the model has " + std::to_string(file_.block_count) + " layers of width " +
@@ -117,7 +116,7 @@ struct GgufSource : BlockSource {
   // gives the norm and c_word, c_0's binary32 bit pattern. Cached per (norm, c_word).
   // gamma is defined in docs/model.md, "11.4 From a decoded value to an integer" (there gamma_k).
   const float *gain(int stream, int layer) override {
-    const fold::Reads reads = fold::reads(kind(stream, layer));
+    const fold::Reads reads = fold::reads(kind(stream, layer), shape.d, shape.dh);
     if (!reads.norm[0]) return nullptr;
     const std::string n =
         (stream == 14 ? std::string() : "blk." + std::to_string(layer) + ".") + reads.norm + ".weight";
@@ -125,7 +124,7 @@ struct GgufSource : BlockSource {
     if (gamma) return gamma;
     const gguf::Tensor &g = file_.at(n);
     if (g.type != gguf::F32 || g.cells() != file_.embedding_length)
-      stop("the norm must have 5120 values of type F32", n);
+      stop("the norm must have " + std::to_string(file_.embedding_length) + " values of type F32", n);
     // The gains pass through a page-locked staging buffer and are zeroed there: they are weights.
     CK(cudaEventSynchronize(staged_[0]));
     file_.read(g, 0, g.bytes(), stage_[0]);

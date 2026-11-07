@@ -320,6 +320,7 @@ inline int Prover::g_token_sumchecks(int g) {
               }
             }
             printf("internal error: no weight table found for weight kind %d\n", kd);
+            name_the_end("guard"); // serving: p258 end 1 guard (kept as an exit(2)); only a routed-experts model reaches this
             exit(2);
           };
           auto tOf = [](int k) {
@@ -377,6 +378,7 @@ inline int Prover::g_token_sumchecks(int g) {
   }
   if (ti != q.NTm) {
     printf("internal error: the sum-check over tokens has %d terms, but %d were planned\n", ti, q.NTm);
+    name_the_end("token-terms"); // the set-up counterpart's name; serving: p258 end 1 token-terms (kept as a return 4)
     return 4;
   }
   q.eng.prove(tr, K.zx_last(lt), q.co, q.Fv, q.Gv, q.NTm, q.msg);

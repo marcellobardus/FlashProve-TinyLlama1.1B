@@ -32,6 +32,7 @@
 #include "hiding/forest_fused_second.cuh"
 #include "hiding/forest_table.cuh"
 #include "hiding/lookup_tie.cuh"
+#include "common/end_name.h" // name_the_end(): names an internal stop before a direct exit (M5e3)
 // The claims that a group's proof leaves to the caller: filled by Forest::prove(), in GPU memory.
 // (zx | zy) is the key side's end point. Coordinate 0 of a point belongs to the top bit.
 // (t | c | j): table row (kT bits), call (cK bits), bit of the multiplicity; plane j holds bit j of
@@ -775,6 +776,7 @@ struct Forest {
     if (!ld || !hold || !nchunks || (size_t)wide * ld % 256 || (size_t)wide * narrow * sizeof(int) % 256) {
       printf("internal error: look-up forest: a lane's memory does not serve a pass of %d and %d rows\n", wide, narrow);
       fflush(stdout);
+      name_the_end("forest-lane-room"); // serving: p258 end 1 forest-lane-room (kept as an exit(1))
       exit(1);
     }
     // With many sums per piece a join's cost is per piece, and a job has at most ld indices (or one
@@ -809,6 +811,7 @@ struct Forest {
       printf("internal error: look-up forest: a pass of %d and %d rows: %d chunks, pieces of %zu indices, room for the sums of %zu chunks in a lane's memory\n",
              wide, narrow, nchunks, k, hold);
       fflush(stdout);
+      name_the_end("forest-lane-room"); // serving: p258 end 1 forest-lane-room (same lane-memory reason as spread())
       exit(1);
     }
     const int per = (int)std::max<size_t>(1, std::min(hold, (size_t)(nchunks + parts - 1) / parts));
@@ -873,6 +876,7 @@ struct Forest {
     if (forms.size() > GROUPS || *std::max_element(forms.begin(), forms.end()) > FORM || all > at.sums_elements) {
       printf("internal error: look-up forest: a pass's sums are of more forms, longer or more than the engine has room for\n");
       fflush(stdout);
+      name_the_end("forest-pass-sums"); // serving: p258 end 1 forest-pass-sums (kept as an exit(1))
       exit(1);
     }
     std::vector<T *> from(forms.size());
@@ -939,6 +943,7 @@ struct Forest {
     if (lc >= 0 && lc <= MOST_CHUNK && words <= TABLE_WORDS && ff::first_table_words(lc) <= (size_t)24 << MOST_CHUNK) return;
     printf("internal error: look-up forest: a table of weights for chunks of 2^%d indices has %zu words, more than its room\n", lc, words);
     fflush(stdout);
+    name_the_end("forest-table-room"); // serving: p258 end 1 forest-table-room (kept as an exit(1))
     exit(1);
   }
   // Computes from the keys the Gram matrix of a layer's first three rounds, into ev.G. LV >= 1: the
@@ -1026,6 +1031,7 @@ struct Forest {
       }
       if (ohi > at.eqhi_elements) {
         printf("internal error: look-up forest: the table of weights per chunk is too small\n");
+        name_the_end("forest-weights-room"); // serving: p258 end 1 forest-weights-room (kept as an exit(1))
         exit(1);
       }
       eqs(cd, J);
@@ -1158,6 +1164,7 @@ struct Forest {
       if (((size_t)NV << (nbits - lc)) > at.eqhi_elements) {
         printf("internal error: look-up forest: the last layer's passes want more weights per chunk than the set-up made room for\n");
         fflush(stdout);
+        name_the_end("forest-weights-room"); // serving: p258 end 1 forest-weights-room (same per-chunk weights room as rest())
         exit(1);
       }
       fr::Eqs J;
@@ -1267,6 +1274,7 @@ struct Forest {
     for (int y = 0; y < plan.NR; y++)
       if (!trees[y].keys) {
         printf("internal error: look-up forest: prove() before counts() of every call\n");
+        name_the_end("forest-keys"); // serving: p258 end 1 forest-keys (kept as an exit(1))
         exit(1);
       }
     lists();

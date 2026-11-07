@@ -31,10 +31,12 @@ met. "--list" prints every case with what it changes and what is expected, one o
   - "met": exit status 4 and no line "plan: not ..": a control, which changes the same values and
     violates nothing (the case none.kit changes nothing).
 Conditions without a case in which that condition alone is not met:
-  - routed-experts: the verifier accepts the digest lines of the four public tables all or none,
-    and rejects them unless the model has routed experts (policy-tables). So table-digests is not
-    met either. Without routed experts it also rejects the clamps' lines rcl
-    and gcl, so both-clamps is not met either. Cases show the three rejections;
+  - routed-experts: a dense model (NE 0) with neither clamp line meets routed-experts and
+    both-clamps (the standard dense parameter form), so neither can be the only unmet condition on a
+    dense kit. The case "dense" (no digest lines) misses table-digests alone; "dense-with-three-digests"
+    (the three tables a dense model uses) meets every condition; "dense-with-digests" (all four
+    digest lines) is rejected (policy-tables), because a dense model does not use the FS/SIG table;
+    a clamp line on a dense model is rejected too (policy-gcl, policy-rcl);
   - prompt-source, three-bytes: the verifier rejects the files of their cases;
   - placement-table: without a layout file the planning call is rejected (plan-layout).
 Two parts of rotary-table have no case: lt (log2 of a request's tokens) at most 10, dh (a head's
@@ -359,6 +361,10 @@ def the_cases(verifier, kit, work):
         return lines[:at] + new + lines[at:], words_kl, table
 
     digests = [x for x in good if DIGEST.match(x)]
+    # The three digest lines a dense model uses (SILU, RoPE, softmax; not the FS/SIG table), in the
+    # ascending table order the scan requires. digests is in the file's order tsilu, tsig, trope,
+    # texp, so dropping tsig leaves tsilu, trope, texp.
+    three_digests = [x for x in digests if not x.startswith("tsig")]
     behind_digests = good[max(i for i, x in enumerate(good) if DIGEST.match(x)) + 1]
 
     def with_digests(new):
@@ -383,9 +389,11 @@ def the_cases(verifier, kit, work):
         ("none", "asked-above", "the kit unchanged, in a call that requests %d bits, one above its line sec" % (BAR + 1), kit_with(), BAR + 1, "security-bits"),
         ("profile", "prof-19", "prof 19 and nothing else", kit_with(lambda: put("prof", 19)), 0, "policy-profile"),
         ("routed-experts", "NE-0", "NE 0 and nothing else", kit_with(lambda: put("NE", 0)), 0, "header-absent-class"),
-        ("routed-experts", "dense", "NE 0 with all that follows from it: no router, no experts' weight kinds, no clamps, no digest lines; the layout file made again",
-         no_experts, 0, ("routed-experts", "both-clamps", "table-digests")),
-        ("routed-experts", "dense-with-digests", "the same with the kit's digest lines", lambda: and_lines(no_experts, digests, behind_digests), 0, "policy-tables"),
+        ("routed-experts", "dense", "NE 0 with all that follows from it: no router, no experts' weight kinds, no clamps, no digest lines; the layout file made again. A dense model with neither clamp meets routed-experts and both-clamps; with no digest lines it still misses table-digests",
+         no_experts, 0, ("table-digests",)),
+        ("routed-experts", "dense-with-digests", "the same with the kit's four digest lines: a dense model uses three tables, not the FS/SIG table, so the four-table set is refused", lambda: and_lines(no_experts, digests, behind_digests), 0, "policy-tables"),
+        ("routed-experts", "dense-with-three-digests", "the same with the three digest lines a dense model uses (tsilu, trope, texp): the standard dense parameter form",
+         lambda: and_lines(no_experts, three_digests, behind_digests), 0, "met"),
         ("routed-experts", "dense-with-gcl", "the same with the line gcl 1", lambda: and_lines(no_experts, ["gcl 1"], "xl "), 0, "policy-gcl"),
         ("routed-experts", "dense-with-rcl", "the same with the line rcl 1", lambda: and_lines(no_experts, ["rcl 1"], "xl "), 0, "policy-rcl"),
         ("five-limbs", "no-xl", "no line xl; the layout file made again", lambda: anew("five-limbs", put("xl", None), scales), 0, ("five-limbs",)),

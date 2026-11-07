@@ -231,6 +231,7 @@ struct ForkMemory {
   void setup_working_set_done() {
     if (has_run[0]) {
       printf("fork memory: internal error: a layer sub-proof is set up after sub-proof 0 has run\n");
+      name_the_end("shared-buffer"); // serving: p258 end 1 shared-buffer (M5g)
       exit(4);
     }
     if (!test.own_memory)
@@ -240,6 +241,7 @@ struct ForkMemory {
               "fork memory: internal error: a layer sub-proof of %s class %d allocated %zu shared buffers; the first "
               "sub-proof of that class allocated %zu\n",
               q == 0 ? "shape" : "lasting", class_of_list(q), next[q], recorded[class_of_list(q)][q].size());
+          name_the_end("shared-buffer"); // serving: p258 end 1 shared-buffer (M5g)
           exit(4);
         }
     end_of[fork] = setup_end_of[fork] = pos;
@@ -762,6 +764,7 @@ struct ForkMemory {
       printf("fork memory: a sub-proof needs more than the %zu GB of addresses reserved for the slab; raise "
              "'addresses' in prover/prover/fork_memory.h\n",
              addresses >> 30);
+      name_the_end("memory-plan"); // serving: p258 end 1 memory-plan (M5g)
       exit(2);
     }
     map_up_to(pos + n);

@@ -335,12 +335,29 @@ inline int Prover::read_isk() {
 // outside this repository). When it passes, cp_commit writes the line with h_par, the digest of the
 // three configuration files it ran with; under other files the line means nothing. No key protects
 // isk.txt (docs/limits-all-rows.tsv, row H7.1). Under "seed test" (test builds only) the line is
-// not required. Call it after read_inputs(), before the spool directory is opened: a start under
-// changed files then changes nothing there.
+// not required. A production serve of a commitment to public weights (-public-weights, which
+// read_isk() has already paired with isk.txt's "seed public") also does without the line when
+// cp_commit left the check out: nothing is hidden there, so a "failed" that depends on the weights
+// reveals nothing a published-weights client could not compute itself; the line is still honoured
+// when cp_commit ran -worst-case and wrote it. This safeguard is never a verifier check, and a
+// hidden-weight commitment must not become provable without it. Call it after read_inputs(), before
+// the spool directory is opened: a start under changed files then changes nothing there.
 inline int Prover::the_ranges_are_guarded() {
 #ifndef SERVING_BUILD
   if (isk_test_seed) {
     printf("# isk.txt's line ranges is not asked for (isk.txt says \"seed test\"): in this run \"failed\" may depend on the weights\n");
+    return 0;
+  }
+#endif
+#ifdef SERVING_BUILD
+  // -public-weights has already been paired with isk.txt's "seed public" [cp-isk-seed-public]. If
+  // cp_commit left the worst-case check out (no line ranges), serve without one: the weights are
+  // published, so a weight-dependent "failed" hides nothing. A missing line without -public-weights
+  // is not accepted here, below, so a hand-edited isk.txt does not slip a hidden-weight commitment
+  // past the check. A commitment that also ran -worst-case still carries a real line, matched below.
+  if (!args.public_weights.empty() && isk_ranges.empty()) {
+    printf("# isk.txt's line ranges is not asked for (isk.txt says \"seed public\" and -public-weights is given): cp_commit left the worst-case check "
+           "out under public weights, so a request may end \"failed\" if a value leaves its range; nothing is hidden under this commitment\n");
     return 0;
   }
 #endif
@@ -489,6 +506,7 @@ inline int Prover::read_the_counts() {
     a_leaf_bears = t.bears, a_batch_counts = t.a_batch;
     if (!a_batch_counts || a_batch_counts != lin_setup.sized.S.fold.columns) {
       printf("internal error: the frame's number of columns that a batch shows is not the shared chain's\n");
+      name_the_end("batch-columns"); // serving: p258 end 1 batch-columns (kept as a return 4)
       return 4;
     }
   }
@@ -648,6 +666,7 @@ inline End Prover::begin_the_batch_on_a_leaf() {
     for (blk::u64 x; read_off && !words.at_end();) read_off = words.get_u64(x), S.push_back(x);
     if (!read_off || S.empty()) {
       printf("internal error: a stored table's name is not two digests and whole words of shape\n");
+      name_the_end("table-name"); // serving: p258 end 1 table-name (kept as an exit(4), at the batch's start)
       exit(4);
     }
     blk::CoinKey seed = blk::coin_key_from_bytes(isk_seed), making = coin_keys::copy_table_key(seed, k, fresh, c, S);
@@ -840,6 +859,7 @@ inline End Prover::begin_the_batch_in_the_library() {
       blk::public_bytes(by_the_file, named_by_the_entry), blk::public_bytes(by_the_keeper, mine.table);
       if (by_the_file.bytes() != by_the_keeper.bytes()) {
         printf("internal error: the keeper names the stored copy of leaf %u otherwise than the copy's entry does\n", batch.leaf);
+        name_the_end("leaf-name"); // serving: p258 end 1 leaf-name (kept as an exit(4), at the batch's start)
         exit(4);
       }
     }
@@ -871,6 +891,7 @@ inline End Prover::begin_the_batch_in_the_library() {
   }
   if (r) {
     printf("internal error: the opening library's batch_begin returned %d\n", r);
+    name_the_end("leaf-begin"); // serving: p258 end 1 leaf-begin (kept as an exit(4), at the batch's start)
     exit(4);
   }
   return End::None;

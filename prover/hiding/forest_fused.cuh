@@ -32,6 +32,7 @@
 // hiding/gram_products.cuh) concatenates its 1-bit matrices in shared memory within the kernel.
 // Include after prover/hiding/forest_keys.cuh (namespace fk).
 #pragma once
+#include "common/end_name.h" // name_the_end(): names an internal stop before a direct exit (M5e3)
 #include <cuda_pipeline.h>
 // ff: the lookup forest's passes and folds on the tensor cores (prover/hiding/forest_fused*.cuh).
 namespace ff {
@@ -201,6 +202,7 @@ template <class P> inline void pass(const P &p, size_t c0, size_t n, int k, int 
     printf("internal error: look-up forest: a pass on the multiprocessor with %zu bytes of shared memory, %zu indices in pieces of "
            "%d\n", bytes, n, k);
     fflush(stdout);
+    name_the_end("forest-pass-shape"); // serving: p258 end 1 forest-pass-shape (kept as an exit(1))
     exit(1);
   }
   if (bytes > 49152) {
@@ -506,6 +508,7 @@ inline int stored(const StoredJob &J, size_t total, T *out, cudaStream_t s) {
   if (((size_t)COLS << ltiles) != k || total % k || J.lsc < 7 || k > (size_t)PIECE_MOST) {
     printf("internal error: look-up forest: a pass over stored tables of %zu indices in pieces of %zu\n", total, k);
     fflush(stdout);
+    name_the_end("forest-pass-shape"); // serving: p258 end 1 forest-pass-shape (kept as an exit(1))
     exit(1);
   }
   const int pieces = (int)(total / k), blocks = std::min(pieces, g_sms);

@@ -81,6 +81,7 @@
    Public source for the fills and copies on the GPU: NVIDIA, CUDA Runtime API, "Memory Management"
    (cudaMemsetAsync(), cudaMemcpyAsync() from device to device, in the calling thread's stream). */
 #pragma once
+#include "common/end_name.h" // name_the_end (M5g)
 #include "common/index_guard.cuh"
 #include "head/forward.cuh"
 #include "head/rows.cuh"
@@ -291,6 +292,7 @@ struct HForkHid {
   int callOf(const char *sg) const { return h.L.seg[h.L.segid(sg)].call; }
   static void stop(const char *s) {
     printf("%s\n", s);
+    name_the_end("head-setup"); // serving: p258 end 1 head-setup (M5g: the head set-up's own stops)
     exit(2);
   }
   LM put(i8 *buf, size_t m, size_t cells, int np) {
@@ -495,6 +497,7 @@ struct HForkHid {
       if ((int)Wd(("iotaH_" + std::to_string(q)).c_str()) != io[q]) {
         printf("policy: the line iotaH_%d must be %d: log2 of the call's keys, %d, minus log2 of a tree's keys, %d "
                "[shape-call-H]\n", q, io[q], n[q], plan.dT);
+        name_the_end("head-setup"); // serving: p258 end 1 head-setup (M5g)
         exit(2);
       }
     }

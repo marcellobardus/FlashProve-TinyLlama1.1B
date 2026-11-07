@@ -12,6 +12,7 @@
 // randomness's key, starts each attempt, writes PAD_STRIDE to PADOFF, and defines GSL, nblk, k_eq
 // before the include. m, ix, Z: a row's largest score, its index, the sum of its weights e.
 #pragma once
+#include "common/end_name.h" // name_the_end (M5g)
 #include "common/element_from_hash.h"
 #include "attn/front.cuh"
 #include "attn/plan_rounds.h"
@@ -118,6 +119,7 @@ struct AForkHid {
     if (A.P.p.D != 2048 || (A.P.form != 1 && A.P.form != 3)) {
       printf("attention: this prover supports only the ring degree D = 2,048 and attention call lists of form 1 or "
              "3\n");
+      name_the_end("attn-ring-form"); // serving: p258 end 1 attn-ring-form (M5i)
       exit(2);
     }
     A.plan();
@@ -147,6 +149,7 @@ private:
       if (mM[i] % D) {
         printf("attention: the column length of a committed matrix (2^lmS, 2^lmh, 2^lmo, 2^lmbA or 2^lmq) is not a "
                "multiple of the ring degree D\n");
+        name_the_end("attn-column-ring"); // serving: p258 end 1 attn-column-ring (M5i)
         exit(2);
       }
     }
@@ -155,6 +158,7 @@ private:
           "policy: forest-planes: 5 <= lmbA <= kT + 5 must hold, where the largest table of attention's lookup calls "
           "has 2^kT rows; lmbA = %d, kT = %d\n",
           p.lmb, A.FO.plan.kT);
+      name_the_end("attn-lmb-range"); // serving: p258 end 1 attn-lmb-range (M5i)
       exit(2);
     }
     A.allocate();
@@ -210,6 +214,7 @@ private:
       printf("attention: this prover needs lt <= 14 (at most 2^14 tokens) and 2 lt + lg <= 32, where 2^lg is the "
              "number of key-value heads; this parameter file has lt = %d and lg = %d\n",
              lt, lg);
+      name_the_end("attn-tokens-heads"); // serving: p258 end 1 attn-tokens-heads (M5i)
       exit(2);
     }
     size_t s = 0;
@@ -263,6 +268,7 @@ private:
     NSM = PAD_STRIDE;
     if (S.sh.Kc > NSM) {
       printf("attention: the fork's pad tree needs %zu coefficients; this build holds at most %zu\n", S.sh.Kc, NSM);
+      name_the_end("attn-pad-tree"); // serving: p258 end 1 attn-pad-tree (M5i)
       exit(2);
     }
     // The three planes (prover/hiding/psc_device.cuh); a build with SLOT_COUNT=1 adds its counters.
@@ -551,6 +557,7 @@ private:
       if (!joined[c]) {
         printf("attention: internal error: af-unclosed-call: lookup call %s has not entered the join\n",
                A.P.C[c].name.c_str());
+        name_the_end("af-unclosed-call"); // serving: p258 end 1 af-unclosed-call (kept as an exit(4))
         exit(4);
       }
     W.lin(forest_join(A.FO, forest, KF));
@@ -613,6 +620,7 @@ private:
       printf("attention: internal error: the walk reads %zu slots for the claims A-3 to A-8, but steps 6 to 22 send "
              "%zu\n",
              sl - slCl, A.nSend);
+      name_the_end("attn-walk-slots"); // serving: p258 end 1 attn-walk-slots (M5i)
       exit(4);
     }
     // The forest's three claims on its multiplicity planes, read from bA_g's tables TB_0, TB_1, TP.
@@ -730,11 +738,13 @@ public:
     AH_LOCALS const int i = (int)gids.size();
     if (i == 64) {
       printf("attention: add_fork: one object supports at most 64 sub-proofs\n");
+      name_the_end("attn-fork-count"); // serving: p258 end 1 attn-fork-count (M5i)
       exit(2);
     }
     // Numbers above 61 are not given out.
     if (gid_ >= 62) {
       printf("attention: add_fork: sub-proof numbers go up to 61; this one is %u\n", gid_);
+      name_the_end("attn-fork-number"); // serving: p258 end 1 attn-fork-number (M5i)
       exit(2);
     }
     gids.push_back(gid_);
@@ -832,7 +842,10 @@ public:
     door.host_words = ch::host.blob();
     S.slot_pads_agree(MSG + NSM, door.ns); // the same comparison after their last use, and then
     ch::masking_pads_hold(MSG + NSM, door.ns); // by a second implementation [own-test-slot-pads]
-    if (hd::close(door, tr, "attention sub-proof", (int)gid)) exit(4);
+    if (hd::close(door, tr, "attention sub-proof", (int)gid)) {
+      name_the_end("guard"); // the layer sub-proof's close reaches the same name through road_is_broken
+      exit(4);
+    }
     assemble();
     kA_keep<<<1, 1>>>(errK, A.err, err, errc);
   }

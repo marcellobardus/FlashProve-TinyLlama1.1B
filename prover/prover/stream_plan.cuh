@@ -55,7 +55,7 @@ inline int Prover::plan_stream_ids() {
     if (all[i].second - all[i - 1].second < 4) {
       printf("plan: the coin streams of %s (id %u) and %s (id %u) overlap; nothing was proved\n",
              all[i - 1].first.c_str(), all[i - 1].second, all[i].first.c_str(), all[i].second);
-      return 2;
+      return refused("stream-plan"); // serving: p258 end 1 stream-plan
     }
   return 0;
 }

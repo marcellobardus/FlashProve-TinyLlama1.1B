@@ -234,7 +234,7 @@ Behind `F`, in this order; each may be absent.
 | `eg`, `smax` | the gate table's input resolution and bound | 4 to 7, absent 8; 2047, 1023, 511 or 255, absent 4095 (`policy-gate-table`) |
 | `rcl`, `gcl` | clamp the router's logits; the key of the gate table | 1 (`policy-rcl`, `policy-gcl`); only with experts |
 | `xl` | five limbs for a value of the residual stream | 5; absent means 4 (`policy-xl`) |
-| `tsilu0`..`7`, `tsig0`..`7`, `trope0`..`7`, `texp0`..`7` | the digests of the four public tables, one word a line | all 32, one directly behind the other, or none; only with `NE` above 0 (`policy-tables`) |
+| `tsilu0`..`7`, `tsig0`..`7`, `trope0`..`7`, `texp0`..`7` | the digests of the public tables, one word a line | with experts all 32 or none; a dense model (`NE 0`) uses three tables and gives `tsilu`, `trope` and `texp` (24 lines) or none, and never the `tsig` lines; the lines come one directly behind the other, in this order (`policy-tables`) |
 
 ### 10. Call lines
 
@@ -258,7 +258,7 @@ Every line names at least one segment. Each segment that the file's other lines 
 
 ## The optional lines on the model's arithmetic
 
-**For a user these are not options.** A call can end with `YES` only with `rcl 1`, `gcl 1`, `xl 5` and without `eg` and `smax` (conditions `both-clamps`, `five-limbs`, `no-range-words`). The other settings exist so that small configurations can serve as tests. Before its long work, `cp_commit` makes a planning call of the `cp_verify` that lies beside it, and at 128 bits it rejects a file of which that call says that it misses a condition, `five-limbs` among them (`cp-commit-not-standard`); its [production build](../../docs/glossary.md#production-build) has no option for fewer bits. Only the planning calls `-plan request` and `-plan accounting` print the settings (lines `plan: ..`).
+**For a user these are not options.** A call can end with `YES` only with `xl 5`, without `eg` and `smax` (conditions `five-limbs`, `no-range-words`), and meeting `both-clamps`: with experts that means `rcl 1` and `gcl 1`; a dense model (`NE 0`) meets it with neither clamp line (it has no router and no gate clamp), and a clamp line on a dense model is refused (`policy-rcl`, `policy-gcl`). The other settings exist so that small configurations can serve as tests. Before its long work, `cp_commit` makes a planning call of the `cp_verify` that lies beside it, and at 128 bits it rejects a file of which that call says that it misses a condition, `five-limbs` among them (`cp-commit-not-standard`); its [production build](../../docs/glossary.md#production-build) has no option for fewer bits. Only the planning calls `-plan request` and `-plan accounting` print the settings (lines `plan: ..`).
 
 The *proved function* is the function from the tokens to the logits that the integer model computes. `eg`, `smax` and `rcl` change it. `gcl` and `xl` leave it unchanged and widen the range of intermediate values for which a proof exists: without them a prompt on which a value leaves the narrower range has no proof.
 
@@ -274,9 +274,9 @@ A *no-overflow condition* is a test on the public parameters which is meant to e
 
 ## Digests of the public tables
 
-The integer model reads four public tables: the gate table, the router's sigmoid (2^16 rows each), the cosines and sines of the rotary positions, the exponentials of the softmax. The verifier builds them itself, with the floating-point library of its platform and a final rounding, and puts their digests into the statement. Two platforms whose libraries round differently could build tables that differ in the last bit, and so disagree on the proved function.
+The integer model reads up to four public tables: the gate table, the router's sigmoid (2^16 rows each), the cosines and sines of the rotary positions, the exponentials of the softmax. A model with experts uses all four; a dense model (`NE 0`) uses three, all but the router's sigmoid. The verifier builds the tables it uses itself, with the floating-point library of its platform and a final rounding, and puts their digests into the statement (a dense model's sigmoid digest slot is zero). Two platforms whose libraries round differently could build tables that differ in the last bit, and so disagree on the proved function.
 
-The digests' 32 lines state the four digests, H(72; table) in the words of `verifier/HASHES.md`, word i of a digest on line i. With them a verifier whose own table hashes differently refuses before it uses a word of a proof, also in a `-plan` call (`table-digest-silu`, `-sigmoid`, `-rope`, `-exp`). Without them it has nothing to compare its tables with.
+The digest lines state the digests, H(72; table) in the words of `verifier/HASHES.md`, word i of a digest on line i: 32 lines with experts (`tsilu`, `tsig`, `trope`, `texp`), 24 for a dense model (`tsilu`, `trope`, `texp`; no `tsig`). With them a verifier whose own table hashes differently refuses before it uses a word of a proof, also in a `-plan` call (`table-digest-silu`, `-sigmoid`, `-rope`, `-exp`; a dense model does not check `-sigmoid`). Without them it has nothing to compare its tables with.
 
 | table | depends on |
 |---|---|
@@ -285,7 +285,7 @@ The digests' 32 lines state the four digests, H(72; table) in the words of `veri
 | rotary positions | `lt`, `dh`, `cs`, `theta0_lo`, `theta0_hi` |
 | softmax exponentials | `S`, `rx` |
 
-`scales/policy_tables.py` makes the digests' 32 lines from these values with code of its own, which imports nothing of the verifier or the provers; its text of BLAKE2b's compression function has the same outside source as theirs (the BLAKE2 team's reference implementation). Run it again whenever one of them changes.
+`scales/policy_tables.py` makes the digest lines from these values with code of its own, which imports nothing of the verifier or the provers; its text of BLAKE2b's compression function has the same outside source as theirs (the BLAKE2 team's reference implementation). Run it again whenever one of them changes.
 
 ## Scales, and lines without a range check
 
@@ -303,11 +303,11 @@ The stage request tests these eighteen. Read the names as labels only.
 
 | condition | what it requires | decided by |
 |---|---|---|
-| `routed-experts` | the model has routed experts | `NE` above 0 |
-| `five-limbs`, `both-clamps`, `no-range-words` | see above | `xl`; `rcl` and `gcl`; neither `eg` nor `smax` |
+| `routed-experts` | the model has routed experts, or is dense with neither clamp line | `NE` above 0; or `NE 0` with no `rcl` and no `gcl` |
+| `five-limbs`, `both-clamps`, `no-range-words` | see above | `xl`; with experts `rcl` and `gcl`, or a dense model (`NE 0`) with neither; neither `eg` nor `smax` |
 | `prompt-source` | the input is the embedding of your tokens | `toksrc 1` |
 | `placement-table` | the placement of the arrays comes from a layout file | the config folder holds the name `layout.txt` (`verifier/src/vf_input_files.h`); a name that is there and cannot be read ends the call with the line `input-unreadable-layout: layout.txt cannot be read: ..` and status 2: that is no verdict |
-| `table-digests` | the file states the four tables' digests | the digests' 32 lines |
+| `table-digests` | the file states the digests of the tables the model uses | with experts the 32 lines of all four tables; a dense model (`NE 0`) the 24 lines of the three it uses (`tsilu`, `trope`, `texp`) |
 | `three-bytes` | the remainder of the division in attention has three bytes | `S` below 32 |
 | `ring-degree` | rows of the committed weight matrix are counted in blocks of 2,048 (there is no ring; the name is a label) | `D 2048` |
 | `one-shift` | all layers of a block of layers have the same attention shift, which turns a score's distance from the largest score of its row into an index of the softmax table | sh of each layer in `KL.bin` |

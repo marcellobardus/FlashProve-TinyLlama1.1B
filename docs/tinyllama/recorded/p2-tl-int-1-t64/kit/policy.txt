@@ -1,0 +1,172 @@
+version H821
+sec 128
+reading 1
+rowcost 1
+slots 64
+answers 1
+record 1
+work field 0 0 0
+work sample 0 0 0
+work closeness 0 0 0
+work positions 20 28 32
+work smallness 0 0 0
+salt 40
+listed 0
+group link 1 18 17 17 13
+stages link 4 3 17 17 3 3 16 16 3 3 15 15 0 0 15 15
+group folded 1 17 15 13 6
+stages folded 4 2 14 12 0 0 14 14
+group omega 1 18 14 13 6
+stages omega 4 3 14 13 0 0 15 15
+group own 1 18 14 13 8
+stages own 4 3 14 13 0 0 15 15
+group once-folded 1 17 15 13 6
+stages once-folded 4 2 14 12 0 0 14 14
+group once-omega 1 18 14 13 6
+stages once-omega 4 3 14 13 0 0 15 15
+group once-own 1 18 14 13 8
+stages once-own 4 3 14 13 0 0 15 15
+group once-ranges 1 22 18 16 10
+stages once-ranges 4 3 19 17 3 3 17 17 0 0 20 20
+ranges-part 14
+table 8 25 10027008 65535 0 15
+prof 20
+lt 6
+L 22
+ll 1
+d 2048
+H 32
+G 4
+dh 64
+f 5632
+fe 0
+NE 0
+V 32000
+eps1_lo 85899
+eps1_hi 0
+eps2_lo 85899
+eps2_hi 0
+cs 12
+theta0_lo 10000
+theta0_hi 0
+hq 2
+hv 0
+ho 0
+hgD 0
+huD 0
+hdD 1
+hr 0
+ut 1
+la 12
+nmin 20
+D 2048
+tau 128
+lmaf 13
+NAf 3
+lmad 12
+NAd 1
+lmar 12
+lmb 13
+lmq 13
+lmx 13
+wb_qk 13
+wb_v 13
+wb_o 13
+wb_g 13
+wb_u 13
+wb_gs 0
+wb_us 0
+wb_gr 0
+wb_ur 0
+wb_dn 13
+wb_dnr 0
+wb_r 0
+iota_0 1
+iota_1 1
+iota_2 0
+iota_3 0
+iota_4 0
+iota_5 0
+iota_6 0
+iota_7 0
+seed_lo 0
+seed_hi 0
+lB 4
+S 12
+rx 8
+kFM 14
+kFD 15
+lmS 11
+NAs 1
+lmh 12
+lmo 13
+lmbA 13
+iotaA_0 52
+MF 43
+KF 32
+epsF_lo 85899
+epsF_hi 0
+toksrc 1
+lmhf 14
+NHf 1
+lmhd 12
+lmhr 12
+lmbH 13
+wb_emb 21
+wb_head 13
+iotaH_0 2
+iotaH_1 1
+iotaH_2 1
+iotaH_3 0
+iotaH_4 0
+iotaH_5 0
+C 256
+theta 256
+cap 0
+s 17
+sh 8
+sT 4
+F 24
+lidb 24
+xl 5
+tsilu0 2048398297
+tsilu1 192427613
+tsilu2 2862900154
+tsilu3 2853881485
+tsilu4 2797826050
+tsilu5 1420723544
+tsilu6 3686369553
+tsilu7 2593882461
+trope0 651961960
+trope1 30494861
+trope2 1940710989
+trope3 3153340750
+trope4 3688758939
+trope5 2138333088
+trope6 1529953791
+trope7 3208676447
+texp0 3648852807
+texp1 2402568834
+texp2 4186852988
+texp3 523559909
+texp4 1873895626
+texp5 3042864545
+texp6 1726265496
+texp7 165292856
+call R16a R16 G U
+call R16b R16 N1 N1H N2 N2H O D V
+call R16c R16 QK QKH
+call R8 R8 DH ROW
+call FC FC CN1 CN2 CQK CV
+call FL FL F
+call R16d R16 UT
+callA KR KR RM RD
+callA KFD KFD FM FD
+callA R16 R16 WL IX
+callA WH WH WH
+callH R16a R16 NF NFH HD0
+callH R16b R16 HD1
+callH R8 R8 ROW HD2
+callH FEa FE HE0
+callH FEb FE HE1
+callH FC FC CNF

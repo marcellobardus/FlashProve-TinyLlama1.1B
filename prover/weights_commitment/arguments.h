@@ -112,8 +112,12 @@ struct Opt {
   // Whether to run the worst-case check (prover/weights_commitment/worst_case.cuh): at the sites of
   // the forward pass that the check bounds, can any prompt drive a value out of its range? If the
   // check fails, cp_commit exits with status 7, before the seed is drawn. Every run of the first
-  // form runs it, except a test run with -test-seed (under which nothing is hidden) and neither
-  // -worst-case nor -worst-case-table.
+  // form runs it, except a run under which nothing is hidden anyway -- a test run with -test-seed,
+  // or a production run with -public-weights -- that gives neither -worst-case nor
+  // -worst-case-table. The check is only a hiding safeguard (it stops a "failed" that would be a bit
+  // about the weights at a prompt of the client's choice); no verifier check depends on it, so a run
+  // whose weights are published may leave it out. When it is left out, isk.txt gets no line ranges,
+  // and cp_prove under -public-weights starts without one (Prover::the_ranges_are_guarded()).
   bool worst_case = false;
   // -worst-case-table (first form only): a new file for the check's full table, readable by its
   // owner only, because its numbers are computed from the weights. Empty: not given.
@@ -189,9 +193,12 @@ struct Opt {
         "A folder of weights holds wsums.txt, fold.txt and the model's *.gguf files.\n"
         "The worst-case check: the call ends with status 7, before the seed is drawn, unless at none of the sites of the forward "
         "pass that the check bounds a prompt can drive the value out of its range. When the check has passed, isk.txt gets the line ranges, without which "
-        "cp_prove does not start. -worst-case-table: the check's table, a line for each site and layer, goes into a new file for "
+        "cp_prove does not start. "
+        SERVING_OR("Under -public-weights the check is left out (nothing is hidden, so it only stops a \"failed\" that would reveal nothing new): isk.txt then gets no "
+                   "line ranges, and cp_prove, given -public-weights, starts without one; -worst-case or -worst-case-table still forces the check. ", "")
+        "-worst-case-table: the check's table, a line for each site and layer, goes into a new file for "
         "its owner only; its numbers are computed from the weights, so keep it as secret as isk. -worst-case: "
-        SERVING_OR("it changes nothing", "makes the check under -test-seed too; elsewhere it changes nothing") ".\n"
+        SERVING_OR("makes the check under -public-weights too; elsewhere it changes nothing", "makes the check under -test-seed too; elsewhere it changes nothing") ".\n"
         "-keep-for-the-audit (not with -leaves): the 32 fresh bytes of the key file's making and of each entry's are kept in <isk>/audit, for the audit with the key, which destroys them before it says yes. Together with the seed they "
         "open every mask in key.bin and the entries: until that yes nothing of the commitment leaves, and no cp_prove is started on isk (docs/operators-duties.md, \"The audit with the key\").\n"
         SERVING_OR("-public-weights <file of 32 bytes>: for public weights only: with this option the weights are NOT hidden: whoever has the 32-byte file can work out every mask. "
@@ -203,6 +210,9 @@ struct Opt {
                    "sha256sum prints it (the command that creates it: docs/operators-duties.md, \"Keys, seeds and machines\", \"Declaring a model file's weights public\"). Creating it declares that this file's weights are public.\n"
                    "    The call computes each model file's SHA-256 and exits with an error if it differs from the declared one. It does not detect a file that is modified in place while it "
                    "runs. cp_prove does not read the .weights-are-public files.\n"
+                   "    The worst-case check is left out under this option, because nothing is hidden: it only guards against a \"failed\" that would reveal a bit about hidden weights, and here the "
+                   "weights are published. isk.txt then gets no line ranges, and cp_prove, given -public-weights, starts without one; a request may still end \"failed\" if a value leaves its range. "
+                   "Give -worst-case (or -worst-case-table) with -public-weights to run the check anyway: then a pass writes the line ranges as usual.\n"
                    "    What this text says of a drawn seed and of a secret isk does not hold then. The option does not go with -keep-for-the-audit. Never use this option on weights that are to "
                    "stay hidden.\n",
                    "")
@@ -341,7 +351,7 @@ struct Opt {
     if (from_weights ? config.empty() || leaves_M < 1 || first_given || sweep
                    : !config.empty() || !(leaves_given || M_given || first_given) || keep_level >= 0 || worst_case || !worst_case_table.empty() || keep_for_the_audit || public_seed)
       return false;
-    worst_case = from_weights && (!test_seed || worst_case || !worst_case_table.empty());
+    worst_case = from_weights && ((!test_seed && !public_seed) || worst_case || !worst_case_table.empty());
     M = M_given ? (uint32_t)leaves_M : 0, first = first_given ? (uint32_t)first_leaf : 0;
     if (leaves && strcmp(leaves, "none")) {
       const char *const dots = strstr(leaves, "..");

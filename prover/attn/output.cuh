@@ -8,6 +8,7 @@
 // sub-proof's forward pass needs o before the attention sub-proof runs; that sub-proof later
 // computes the same o from the same q, k and v.
 #pragma once
+#include "common/end_name.h" // name_the_end (M5g)
 #include "attn/forward.cuh"
 #include "hiding/place.cuh"
 // o[t][h * dh + c] = oh[h][t][c]. 8 must divide dh, and o and oh must be 16-byte aligned.
@@ -64,6 +65,7 @@ struct AOutput {
       printf("attention: the forward pass supports 32, 64 or 128 channels per head, 64 to 32,768 tokens, tiles of at "
              "least 16 tokens and at most 16 query heads per key-value head; the requested shape is outside these "
              "limits\n");
+      name_the_end("attn-output-shape"); // serving: p258 end 1 attn-output-shape (M5i)
       exit(2);
     }
     const size_t nr = (size_t)H * p.T;

@@ -809,6 +809,7 @@ struct Eng {
         printf("product test: a layer with omitted planes still has %d index bits after the "
                "Gram passes, more than lmid = %d (the second argument of init)\n",
                ls, lmid);
+        name_the_end("forest-table-rest"); // the forest table side's only caller of gram_rest: p258 end 1 forest-table-rest
         exit(1);
       }
       const size_t nh = (size_t)1 << (ls - lk);

@@ -12,6 +12,7 @@
    Per proof: `draw_matrix`; the caller fills Z; `fold_to_group2`, `group2`, `make_cv`. */
 #pragma once
 // tail.cuh includes this file at its end: include tail.cuh, not this file.
+#include "common/end_name.h" // name_the_end (M5g)
 #include "hiding/eqs.cuh"
 #include "hiding/tie_h.cuh"
 #include "hiding/door.cuh"
@@ -190,11 +191,13 @@ struct HiddenTail {
     for (int mu = 0; mu < NM; mu++) {
       if (M[mu].k > (size_t)HT_KMAX) {
         printf("policy: a folded matrix has %zu columns; at most %d are supported\n", (size_t)M[mu].k, HT_KMAX);
+        name_the_end("tail-setup"); // serving: p258 end 1 tail-setup (M5g)
         exit(2);
       }
       if (M[mu].m % 32) {
         printf("smallness test: a folded matrix has %zu rows; the number must be a multiple of "
                "32\n", (size_t)M[mu].m);
+        name_the_end("tail-setup"); // serving: p258 end 1 tail-setup (M5g)
         exit(2);
       }
       off[mu] = mz;
@@ -204,6 +207,7 @@ struct HiddenTail {
     KZ = 2 * mz;
     if (NM > 32) {
       printf("smallness test: at most 32 matrices\n");
+      name_the_end("tail-setup"); // serving: p258 end 1 tail-setup (M5g)
       exit(2);
     }
     {
@@ -219,6 +223,7 @@ struct HiddenTail {
       }
       if (n[0] != n[1] || pub[0] != pub[1]) {
         printf("internal error: smallness test: its two lookups differ in their keys' number or padding\n");
+        name_the_end("tail-setup"); // serving: p258 end 1 tail-setup (M5g)
         exit(2);
       }
       n9 = n[0];
@@ -227,6 +232,7 @@ struct HiddenTail {
       F.init({ForestCall{n9, kz[0], 0, nullptr, 0}, ForestCall{n9, kz[1], 0, nullptr, 0}}, identity_cap(), 18, rebuilt);
       if (F.plan.NT != 1 << F.plan.rK || F.plan.iota[0] != io[0] || F.plan.NC != 2 || F.plan.cK != 1) {
         printf("internal error: smallness test: the forest of its two lookups has not the expected trees or calls\n");
+        name_the_end("tail-setup"); // serving: p258 end 1 tail-setup (M5g)
         exit(2);
       }
       kb = (size_t)1 << (F.plan.kT + F.plan.cK); // bit j of table row t's multiplicity in call c: X = (t | c | j) = (t 2^cK + c) 32 + j, at BZ[X / kb][X mod kb]
@@ -290,6 +296,7 @@ struct HiddenTail {
       if ((int)vrows.size() != nvZ + 3) {
         printf("internal error: smallness test: the number of virtual rows is not the expected "
                "one\n");
+        name_the_end("tail-setup"); // serving: p258 end 1 tail-setup (M5g)
         exit(2);
       }
     }
@@ -325,11 +332,13 @@ struct HiddenTail {
     if (!ow->shr[muOwner]) {
       printf("smallness test: the owner's matrix is not a border matrix, so it has no tree "
              "that another sub-proof can read\n");
+      name_the_end("tail-setup"); // serving: p258 end 1 tail-setup (M5g)
       exit(2);
     }
     if (ow->M[muOwner].m != M[mu].m || ow->M[muOwner].k != M[mu].k) {
       printf("smallness test: the owner and the reader of a border matrix disagree on its "
              "number of rows or columns\n");
+      name_the_end("tail-setup"); // serving: p258 end 1 tail-setup (M5g)
       exit(2);
     }
   }
@@ -350,6 +359,7 @@ struct HiddenTail {
       for (int mu = 0; mu < NM; mu++) columns += M[mu].k;
       if (blk::rng_combinations(p) != (unsigned)HT_TAU) {
         printf("internal error: smallness test: the plan asks for %u combinations, this program was built for %d\n", blk::rng_combinations(p), HT_TAU);
+        name_the_end("tail-setup"); // serving: p258 end 1 tail-setup (M5g)
         exit(2);
       }
       blk::plan_rng(p, where, columns);

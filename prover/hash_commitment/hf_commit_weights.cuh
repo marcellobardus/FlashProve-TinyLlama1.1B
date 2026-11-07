@@ -238,7 +238,7 @@ struct PinnedWeights : WeightWalker {
   }
 
   // A tensor of a model's file. wsums.txt gives its exponent (fold.txt the embedding's) and `sum`.
-  // Its multipliers, if any: one per input, a norm's gain times the constant c_0 (fold::reads()).
+  // Its multipliers, if any: one per input, a norm's gain times the constant c_0 (fold::reads(kind, d, dh)).
   void describe_file(Tensor &t) {
     const ::gguf::Tensor &g = source.file.at(t.name);
     const auto line = source.sums.find(t.name);
@@ -280,7 +280,7 @@ struct PinnedWeights : WeightWalker {
                       "takes at most 24; nothing is written\n", t.name.c_str(), t.e);
       exit(2);
     }
-    const ::fold::Reads rd = ::fold::reads(kind);
+    const ::fold::Reads rd = ::fold::reads(kind, source.file.embedding_length, source.file.key_length);
     if (!rd.norm[0]) return;
     const ::gguf::Tensor &norm = source.file.at(blk + rd.norm + ".weight");
     if (norm.type != ::gguf::F32 || norm.cells() != g.dims[0]) {

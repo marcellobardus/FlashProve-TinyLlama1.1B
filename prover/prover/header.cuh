@@ -39,9 +39,11 @@ inline int Prover::build_header() {
   // must match the tables that this program computes with the machine's floating-point library;
   // otherwise it would prove a different function.
   const bool tables_given = policy.has("tsilu0");
-  // A model with experts (`mo`) uses all four tables and needs the digest lines. The configuration
-  // digest then covers them, and every batch's first key
-  // depends on it (batch_first_key(), prover/common/coin_keys.h). So two machines whose
+  // A model with experts (`mo`) uses all four tables and needs the digest lines. A dense model
+  // (NE 0, !mo) uses three (SILU, RoPE, softmax; not the FS/SIG table): the sigmoid block below is
+  // skipped and its digest slot is written as zeros, and table_fits() checks each of the three when
+  // the lines are given. The configuration digest covers the digest lines, and every batch's first
+  // key depends on it (batch_first_key(), prover/common/coin_keys.h). So two machines whose
   // floating-point libraries differ cannot prove with different tables under the same private
   // randomness.
   if (!tables_given && mo) {
@@ -78,7 +80,7 @@ inline int Prover::build_header() {
       tw[j] = Ts[j] + 4096;
     }
     earlier_hash_h_digest(o, 72, tw.data(), 65536);
-    if (!table_fits("tsilu", "silu", o)) return 2;
+    if (!table_fits("tsilu", "silu", o)) return refused("table-digest"); // serving: p258 end 1 table-digest
     hd.insert(hd.end(), o, o + DW);
   }
   if (mo) {
@@ -88,7 +90,7 @@ inline int Prover::build_header() {
       tw[j] = FSw[j];
     }
     earlier_hash_h_digest(o, 72, tw.data(), 65536);
-    if (!table_fits("tsig", "sigmoid", o)) return 2;
+    if (!table_fits("tsig", "sigmoid", o)) return refused("table-digest"); // serving: p258 end 1 table-digest
     hd.insert(hd.end(), o, o + DW);
   } else {
     hd.insert(hd.end(), DW, 0u);
@@ -106,7 +108,7 @@ inline int Prover::build_header() {
     }
     u32 o[DW];
     earlier_hash_h_digest(o, 72, tw.data(), tw.size());
-    if (!table_fits("trope", "rope", o)) return 2;
+    if (!table_fits("trope", "rope", o)) return refused("table-digest"); // serving: p258 end 1 table-digest
     hd.insert(hd.end(), o, o + DW);
   }
   {
@@ -119,7 +121,7 @@ inline int Prover::build_header() {
     std::vector<u32> tw(Te.begin(), Te.end());
     u32 o[DW];
     earlier_hash_h_digest(o, 72, tw.data(), tw.size());
-    if (!table_fits("texp", "exp", o)) return 2;
+    if (!table_fits("texp", "exp", o)) return refused("table-digest"); // serving: p258 end 1 table-digest
     hd.insert(hd.end(), o, o + DW);
     std::vector<u32> cw((policy.callsA.size() + 3) / 4, 0);
     for (size_t i = 0; i < policy.callsA.size(); i++) {

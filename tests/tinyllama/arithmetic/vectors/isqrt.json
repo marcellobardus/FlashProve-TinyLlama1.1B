@@ -1,0 +1,30 @@
+{
+  "primitive": "isqrt(a) = the largest r with r^2 <= a (ARITHMETIC_CONTRACT.md 2.3)",
+  "cases": [
+    {"a": 0, "expected": 0},
+    {"a": 1, "expected": 1},
+    {"a": 2, "expected": 1},
+    {"a": 3, "expected": 1},
+    {"a": 4, "expected": 2},
+    {"a": 5, "expected": 2},
+    {"a": 8, "expected": 2},
+    {"a": 9, "expected": 3},
+    {"a": 15, "expected": 3},
+    {"a": 16, "expected": 4},
+    {"a": 24, "expected": 4},
+    {"a": 25, "expected": 5},
+    {"a": 26, "expected": 5, "note": "sigma in the contract's norm example: isqrt(26) = 5"},
+    {"a": 99, "expected": 9},
+    {"a": 100, "expected": 10},
+    {"a": 999, "expected": 31},
+    {"a": 302231454903657293676543, "expected": 549755813887, "note": "2^78 - 1, condition 1 edge: r = 2^39 - 1"},
+    {"a": 302231454903657293676544, "expected": 549755813888, "note": "2^78: r = 2^39"},
+    {"a": 302231454904756805304320, "expected": 549755813888, "note": "2^78 + 2^40 < (2^39 + 1)^2"},
+    {"a": 302231454904756805304321, "expected": 549755813889, "note": "2^78 + 2^40 + 1 = (2^39 + 1)^2"},
+    {"a": 299865660046580329300225, "expected": 547599908735, "note": "the condition 8 stream bound, squared"},
+    {"a": 1000000000000000000000000, "expected": 1000000000000, "note": "10^24"},
+    {"a": 4611686018427387904, "expected": 2147483648, "note": "2^62: r = 2^31"},
+    {"a": 140737488355328, "expected": 11863283, "note": "2^47"},
+    {"a": 16761957, "expected": 4094, "note": "Vx + eps of x = [2047, 2047, 2047, 2047] with eps = 85899"}
+  ]
+}

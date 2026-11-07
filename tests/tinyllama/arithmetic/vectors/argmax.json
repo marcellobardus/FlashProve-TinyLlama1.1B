@@ -1,0 +1,23 @@
+{
+  "primitive": "argmax: the least index at which the maximum is attained (ARITHMETIC_CONTRACT.md 2.3)",
+  "cases": [
+    {"values": [5, 9, 9, -1], "expected": 1, "note": "contract example"},
+    {"values": [7, 7, 7], "expected": 0, "note": "all equal: the least index"},
+    {"values": [-1, -1], "expected": 0},
+    {"values": [9, 9, 9, 9, 9], "expected": 0},
+    {"values": [42], "expected": 0},
+    {"values": [0], "expected": 0},
+    {"values": [-5, -2, -9, -2], "expected": 1, "note": "negatives"},
+    {"values": [-9, -2, -5], "expected": 1},
+    {"values": [1, 0, 0, 0], "expected": 0},
+    {"values": [0, 0, 0, 1], "expected": 3, "note": "maximum at the end"},
+    {"values": [1, 2, 3, 3], "expected": 2, "note": "tie at the end: least index wins"},
+    {"values": [3, 3, 2, 1], "expected": 0},
+    {"values": [5, 9, 9, -1, 9], "expected": 1, "note": "contract example extended with a later tie"},
+    {"values": [4611686018427387904, 4611686018427387903], "expected": 0, "note": "2^62 vs 2^62 - 1"},
+    {"values": [4611686018427387903, 4611686018427387904], "expected": 1},
+    {"values": [4611686018427387904, -4611686018427387904], "expected": 0},
+    {"values": [-4611686018427387904, 4611686018427387904], "expected": 1},
+    {"values": [0, 31999, 31999, 0], "expected": 1, "note": "token-id sized values"}
+  ]
+}

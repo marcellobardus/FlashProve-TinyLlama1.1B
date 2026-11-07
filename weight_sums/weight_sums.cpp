@@ -687,14 +687,30 @@ inline void locate(Tensor &tensor, const Shard &shard) {
 // w = RNE(2^e * p) is the element's integer. The page docs/model.md writes pi for p, c_0 for c and,
 // in the block formats, h and h_min for d and dmin, mn for m, and c for the code q.
 
-// The only model width (metadata key embedding_length) and head dimension (attention.key_length)
-// that plan() accepts. The two constants below are right for these values only. kQueryConstant
-// includes the attention scale, 1 / sqrt(128).
-constexpr std::uint32_t kWidth = 5120;
-constexpr std::uint32_t kHeadDimension = 128;
+// The head dimension (metadata key attention.key_length) that the rule assumes when a file omits
+// it (docs/model.md, "11.1 The container").
+constexpr std::uint64_t kHeadDimension = 128;
 
-constexpr std::uint32_t kNormConstant = 0x3F8F1BBDu;  // RN32(sqrt(5120) / 64), as a binary32 bit pattern
-constexpr std::uint32_t kQueryConstant = 0x3DCA62C2u; // RN32(sqrt(5120) / 64 / sqrt(128)), as a binary32 bit pattern
+// The bit pattern of a binary32 number.
+inline std::uint32_t bits_of(float value) {
+  std::uint32_t bits;
+  std::memcpy(&bits, &value, sizeof bits);
+  return bits;
+}
+
+// The two gain-folding constants (c_0, c_q) as binary32 bit patterns, for a model of this width and
+// head dimension, by FlashProve's own rule (scales/README.md, "The constants of a norm"): with t
+// the largest integer with 4^t <= width, c = sqrt(width) / 2^t (so 1 <= c < 2), c_0 = RN32(c) and
+// c_q = RN32(c / sqrt(head_dimension)), c_q carrying attention's scale 1 / sqrt(head_dimension). At
+// width 5120 head 128 these are 0x3F8F1BBD and 0x3DCA62C2; at 2048 and 64, 0x3FB504F3 and
+// 0x3E3504F3 (docs/tinyllama/ARITHMETIC_CONTRACT.md 4.3). Generalizes the former literals, which
+// were right for width 5120 and head 128 only.
+inline std::pair<std::uint32_t, std::uint32_t> fold_constants(std::uint64_t width, std::uint64_t head_dimension) {
+  int t = 0;
+  while ((std::uint64_t)1 << (2 * (t + 1)) <= width) ++t; // 4^(t+1) <= width
+  const double c = std::sqrt((double)width) / (double)((std::uint64_t)1 << t);
+  return {bits_of((float)c), bits_of((float)(c / std::sqrt((double)head_dimension)))};
+}
 
 // A tensor with the role matrix or embedding is committed. The output head has the role matrix.
 enum class Role { ignored, norm, matrix, embedding };
@@ -702,36 +718,36 @@ enum class Role { ignored, norm, matrix, embedding };
 // What the rule does with a tensor.
 struct Use {
   Role role = Role::ignored;
-  std::string norm;           // for a matrix: the name of the norm whose gains it reads, or empty
-  std::uint32_t constant = 0; // for a matrix that reads a norm: the constant c, as a binary32 bit pattern
+  std::string norm; // for a matrix: the name of the norm whose gains it reads, or empty
+  bool query = false; // for a matrix that reads a norm: true if it uses c_q (c_0 / sqrt(dh)), else c_0
 };
 
 // One kind of tensor in a layer, "blk.<layer>.<kind>.weight". A kind with role matrix is committed.
-// For `constant`, see `Use`.
+// For `query`, see `Use`.
 struct LayerKind {
   const char *kind;
   Role role;
   const char *norm; // the kind of the norm that the matrix reads, or nullptr
-  std::uint32_t constant;
+  bool query;
 };
 
 constexpr LayerKind kLayerKinds[] = {
-    {"attn_norm", Role::norm, nullptr, 0},
-    {"ffn_norm", Role::norm, nullptr, 0},
-    {"attn_q", Role::matrix, "attn_norm", kQueryConstant},
-    {"attn_k", Role::matrix, "attn_norm", kNormConstant},
-    {"attn_v", Role::matrix, "attn_norm", kNormConstant},
-    {"attn_output", Role::matrix, nullptr, 0},
-    {"ffn_gate", Role::matrix, "ffn_norm", kNormConstant},
-    {"ffn_up", Role::matrix, "ffn_norm", kNormConstant},
-    {"ffn_down", Role::matrix, nullptr, 0},
-    {"ffn_gate_inp", Role::matrix, "ffn_norm", kNormConstant},
-    {"ffn_gate_shexp", Role::matrix, "ffn_norm", kNormConstant},
-    {"ffn_up_shexp", Role::matrix, "ffn_norm", kNormConstant},
-    {"ffn_down_shexp", Role::matrix, nullptr, 0},
-    {"ffn_gate_exps", Role::matrix, "ffn_norm", kNormConstant},
-    {"ffn_up_exps", Role::matrix, "ffn_norm", kNormConstant},
-    {"ffn_down_exps", Role::matrix, nullptr, 0},
+    {"attn_norm", Role::norm, nullptr, false},
+    {"ffn_norm", Role::norm, nullptr, false},
+    {"attn_q", Role::matrix, "attn_norm", true},
+    {"attn_k", Role::matrix, "attn_norm", false},
+    {"attn_v", Role::matrix, "attn_norm", false},
+    {"attn_output", Role::matrix, nullptr, false},
+    {"ffn_gate", Role::matrix, "ffn_norm", false},
+    {"ffn_up", Role::matrix, "ffn_norm", false},
+    {"ffn_down", Role::matrix, nullptr, false},
+    {"ffn_gate_inp", Role::matrix, "ffn_norm", false},
+    {"ffn_gate_shexp", Role::matrix, "ffn_norm", false},
+    {"ffn_up_shexp", Role::matrix, "ffn_norm", false},
+    {"ffn_down_shexp", Role::matrix, nullptr, false},
+    {"ffn_gate_exps", Role::matrix, "ffn_norm", false},
+    {"ffn_up_exps", Role::matrix, "ffn_norm", false},
+    {"ffn_down_exps", Role::matrix, nullptr, false},
 };
 
 // Returns how the rule uses the tensor `name` in a model with `layers` layers. A layer number has
@@ -739,9 +755,9 @@ constexpr LayerKind kLayerKinds[] = {
 // of any other form, or of an unknown kind, is ignored. A name of a known kind whose layer number
 // is `layers` or more is an error.
 inline Use classify(const std::string &name, std::uint64_t layers) {
-  if (name == "token_embd.weight") return {Role::embedding, "", 0};
-  if (name == "output.weight") return {Role::matrix, "output_norm.weight", kNormConstant};
-  if (name == "output_norm.weight") return {Role::norm, "", 0};
+  if (name == "token_embd.weight") return {Role::embedding, "", false};
+  if (name == "output.weight") return {Role::matrix, "output_norm.weight", false};
+  if (name == "output_norm.weight") return {Role::norm, "", false};
 
   const std::string prefix = "blk.";
   if (name.compare(0, prefix.size(), prefix) != 0) return {};
@@ -762,7 +778,7 @@ inline Use classify(const std::string &name, std::uint64_t layers) {
     Use use;
     use.role = known.role;
     if (known.norm != nullptr) use.norm = prefix + digits + "." + known.norm + ".weight";
-    use.constant = known.constant;
+    use.query = known.query;
     return use;
   }
   return {};
@@ -1282,10 +1298,12 @@ inline std::vector<Job> plan(std::vector<Shard> &shards) {
   const auto key_length = first.metadata.find(prefix + ".attention.key_length");
   const bool has_head_dimension = key_length != first.metadata.end() && key_length->second.is_unsigned();
   const std::uint64_t head_dimension = has_head_dimension ? key_length->second.number : kHeadDimension;
-  if (width != kWidth) outside_the_rule(Status::bound, first.path + ": the embedding_length is not 5120.");
-  if (head_dimension != kHeadDimension) {
-    outside_the_rule(Status::bound, first.path + ": the attention.key_length is not 128.");
-  }
+  // The rule's two constants are a function of the width and head dimension (fold_constants), so the
+  // rule is defined for any positive whole width and head dimension, not only width 5120 and head
+  // 128. A scale fit (scales/README.md) may still need a narrower range.
+  if (width < 1) outside_the_rule(Status::bound, first.path + ": the embedding_length is not at least 1.");
+  if (head_dimension < 1) outside_the_rule(Status::bound, first.path + ": the attention.key_length is not at least 1.");
+  const auto [norm_constant, query_constant] = fold_constants(width, head_dimension);
 
   std::map<std::string, const Tensor *> by_name;
   std::vector<std::pair<const Tensor *, Use>> committed;
@@ -1303,8 +1321,8 @@ inline std::vector<Job> plan(std::vector<Shard> &shards) {
       // damaged file, any other name can be tensor data: see read_shard().
       if (use.role == Role::norm) {
         if (tensor.type != kTypeF32) fail(Status::type, "The norm " + tensor.name + " must have the storage type F32.");
-        if (tensor.elements != kWidth) {
-          fail(Status::container, "The norm " + tensor.name + " does not have 5120 elements.");
+        if (tensor.elements != width) {
+          fail(Status::container, "The norm " + tensor.name + " does not have " + std::to_string(width) + " elements.");
         }
       } else {
         if (tensor.type != kTypeF32 && tensor.type != kTypeQ4K && tensor.type != kTypeQ5K && tensor.type != kTypeQ6K &&
@@ -1324,8 +1342,9 @@ inline std::vector<Job> plan(std::vector<Shard> &shards) {
     job.tensor = tensor;
     job.embedding = use.role == Role::embedding;
     if (!use.norm.empty()) {
-      if (tensor->dims[0] != kWidth) {
-        fail(Status::container, "The tensor " + tensor->name + " reads a norm, so its first dimension must be 5120.");
+      if (tensor->dims[0] != width) {
+        fail(Status::container, "The tensor " + tensor->name + " reads a norm, so its first dimension must be " +
+                                    std::to_string(width) + ".");
       }
       const auto norm = by_name.find(use.norm);
       if (norm == by_name.end()) {
@@ -1333,7 +1352,7 @@ inline std::vector<Job> plan(std::vector<Shard> &shards) {
                                     ", which is in none of the files. Name every file of the model in one command.");
       }
       job.norm = norm->second;
-      job.constant = use.constant;
+      job.constant = use.query ? query_constant : norm_constant;
     }
     jobs.push_back(job);
   }

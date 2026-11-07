@@ -446,7 +446,7 @@ inline int Prover::make_tables() {
     int S_, wd_;
     if (!APlan::decodeS(policy["S"], S_, wd_)) {
       printf("policy: the value S = %d is not an allowed setting\n", (int)policy["S"]);
-      return 2;
+      return refused("lookup-tables"); // the softmax exponential table cannot be made; serving: p258 end 1 lookup-tables
     }
     Te = APlan::expTable(S_, policy["rx"]);
   }
@@ -519,7 +519,7 @@ inline int Prover::plan_memory() {
       if ((args.one_room_for_experts || args.experts_by_layer) && !mo) {
         printf("-memory: one-room-for-experts, experts-by-layer and tensor-rooms require a model with routed "
                "experts\n");
-        return 2;
+        return refused("memory-plan"); // serving: p258 end 1 memory-plan
       }
       weight_stream.one_room_for_experts = args.one_room_for_experts || args.experts_by_layer;
       weight_stream.experts_by_layer = args.experts_by_layer;
@@ -530,7 +530,7 @@ inline int Prover::plan_memory() {
         printf("-memory: tensor-rooms=%d is too small: a layer group of this model has %d routed tensors; give at "
                "least that many\n",
                args.tensor_rooms, 3 * (Lam / 2));
-        return 2;
+        return refused("memory-plan"); // serving: p258 end 1 memory-plan
       }
       weight_stream.one_room_for_the_rest = weight_stream.ends_by_turns = args.rest_by_turns;
       block_weights->fill(*block_source, weight_stream);

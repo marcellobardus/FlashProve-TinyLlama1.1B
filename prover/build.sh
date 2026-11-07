@@ -127,7 +127,7 @@ for word in "$@"; do
 done
 # The usage message, and the arguments that get it before anything is created. A script that
 # sources this one has targets of its own: its more_targets(), below, rejects what it does not know.
-usage_line="usage: ./build.sh [serving]|tests|in_pieces_test|tree_hash_test|tail_gam_test|psc_shell_test|token_sumcheck_psc_test|attention_sumchecks_test|forest_lookup_test|forest_lookup_bench|frame_as_the_verifier_reads|compiler_sample|make_model|cp_prove|cp_commit|serving_cp_prove|serving_cp_commit|hc_unit_test tests/<name>|hc_host_test tests/<name>"
+usage_line="usage: ./build.sh [serving]|tests|in_pieces_test|moe_at_layer_test|tree_hash_test|tail_gam_test|psc_shell_test|token_sumcheck_psc_test|attention_sumchecks_test|forest_lookup_test|forest_lookup_bench|frame_as_the_verifier_reads|compiler_sample|make_model|cp_prove|cp_commit|serving_cp_prove|serving_cp_commit|hc_unit_test tests/<name>|hc_host_test tests/<name>"
 if [ -z "$sourced" ]; then
   for word in "$@"; do
     if [[ $word == -h || $word == --help ]]; then
@@ -137,7 +137,7 @@ if [ -z "$sourced" ]; then
     fi
   done
   case $1 in
-    serving | tests | in_pieces_test | tree_hash_test | tail_gam_test | psc_shell_test | token_sumcheck_psc_test | attention_sumchecks_test | \
+    serving | tests | in_pieces_test | moe_at_layer_test | tree_hash_test | tail_gam_test | psc_shell_test | token_sumcheck_psc_test | attention_sumchecks_test | \
       forest_lookup_test | forest_lookup_bench | frame_as_the_verifier_reads | compiler_sample | make_model | cp_prove | cp_commit | serving_cp_prove | serving_cp_commit | \
       hc_unit_test | hc_host_test) ;;
     all)
@@ -517,7 +517,7 @@ trap finish EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
-host_targets="make_model in_pieces_test hc_host_test"
+host_targets="make_model in_pieces_test moe_at_layer_test hc_host_test"
 # digest: prints the SHA-256 that a production program's build record (<program>.build) gives for
 # the sources. It covers the three directories from which the programs are compiled, verifier/src
 # for cp_prove's record too, though cp_prove compiles nothing from it: this one without build/, build-dw10/, Python's caches, *.md and the directories named tests;
@@ -842,6 +842,10 @@ case "${1:-}" in
   # CPU test: work on a long range of bytes, divided among threads.
   in_pieces_test)
     g++ -O2 -fno-ipa-modref -std=c++17 -DDIGEST_WORDS=$dw -Wall -Wextra -pthread -I. "${field_flags[@]}" -o "$work/in_pieces_test" tests/in_pieces_test.cpp
+    ;;
+  # CPU test: moe_at_layer() marks a layer MoE only when the model has routed experts (NE > 0).
+  moe_at_layer_test)
+    g++ -O2 -std=c++17 -Wall -Wextra -I. -o "$work/moe_at_layer_test" tests/moe_at_layer_test.cpp
     ;;
   # Test: the implementations of the tree hash against the repository's test vectors.
   tree_hash_test)

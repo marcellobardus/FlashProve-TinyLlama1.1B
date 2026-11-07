@@ -77,7 +77,7 @@ inline int Prover::setup_attention_forks() {
       if (Hd->A.ncell[A_QA] != cells_of(FK[0], FK[0].qa)) {
         printf("internal error: an attention sub-proof and the layer sub-proofs give the matrix qa different numbers "
                "of cells\n");
-        return 2;
+        return refused("attention-qa"); // serving: p258 end 1 attention-qa
       }
     CK(cudaMalloc(&Aqa, cells_of(FK[0], FK[0].qa)));
     CK(cudaMalloc(&Art, (size_t)NGr * ART_WORDS * 4));
@@ -113,6 +113,9 @@ inline int Prover::setup_head_fork() {
     HH.h.cm = 2047;
     HH.HT.rebuilt = args.tail_rebuilt;
     if (int rc = HH.setup(hc, XBv[NGr], tFCd, tFC[32768] % FIELD_P, &FK[NGr - 1].h->HT, iXN, MSG, NSM, &CP)) {
+      // name_the_end keeps the first name, so a specific name HH.setup already set stays; this only
+      // names an otherwise-bare end from a head-setup refusal that dropped the name. serving: p258 end 1 head-setup
+      name_the_end("head-setup");
       return rc;
     }
     // Lists the head's unmasked weight claim as a request's data, as in layer_walk.cuh. The masked
@@ -159,7 +162,7 @@ inline int Prover::setup_buffers() {
   for (auto &K : FK) {
     if (K.h->S.sh.Kc > NSM) {
       printf("internal error: S has %zu coefficients, but the message area was sized for %zu\n", K.h->S.sh.Kc, NSM);
-      return 2;
+      return refused("message-area"); // serving: p258 end 1 message-area
     }
   }
   for (auto &K : FK) {

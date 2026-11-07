@@ -143,30 +143,52 @@ GGUF_PY_VERSION = "0.19.0"  # the only gguf-py version tested (by weight_sums/te
 #    Quantization for Deep Learning Inference: Principles and Empirical Evaluation",
 #    arXiv:2004.09602, section 3.4.
 
-# NORM_CONSTANT and QUERY_CONSTANT are valid only for this width (embedding_length in GGUF) and this
-# head dimension. QUERY_CONSTANT includes the attention scale, 1 / sqrt(HEAD_DIMENSION).
+# The reference shape. The conversion rule's two constants are a function of the width
+# (embedding_length in GGUF) and the head dimension; fold_constants() computes them for the model's
+# actual shape. HEAD_DIMENSION is the default when a shard's metadata omit attention.key_length.
 WIDTH = 5120
 HEAD_DIMENSION = 128
-NORM_CONSTANT = np.uint32(0x3F8F1BBD).view(np.float32)  # sqrt(5120) / 64, rounded to binary32
-QUERY_CONSTANT = np.uint32(0x3DCA62C2).view(np.float32)  # sqrt(5120) / 64 / sqrt(128), rounded to binary32
+
+
+def fold_constants(width, head_dimension):
+    """The two gain-folding constants (c_0, c_q) as binary32 values, for a model of this width and
+    head dimension, by FlashProve's own rule (scales/README.md, "The constants of a norm").
+
+    Let t be the largest integer with 4^t <= width, and c = sqrt(width) / 2^t, so that
+    sqrt(width) = c * 2^t and 1 <= c < 2. Then c_0 = RN32(c) folds a norm's gains and sqrt(width)
+    into a matrix, and c_q = RN32(c / sqrt(head_dimension)) also carries attention's scale
+    1 / sqrt(head_dimension). At width 5,120 and head 128 these are 0x3F8F1BBD and 0x3DCA62C2; at
+    width 2,048 and head 64 they are sqrt(2) and sqrt(2) / 8, 0x3FB504F3 and 0x3E3504F3
+    (docs/tinyllama/ARITHMETIC_CONTRACT.md, section 4.3). This generalizes the former literals,
+    which were right for width 5,120 and head 128 only; at that shape the values are unchanged.
+    """
+    if width < 1 or head_dimension < 1:
+        raise Fault("model shape", "the width and the head dimension must each be at least 1")
+    t = 0
+    while 4 ** (t + 1) <= width:
+        t += 1
+    c = math.sqrt(width) / (2**t)  # the exact float64 value; np.float32 rounds it once, ties to even
+    return np.float32(c), np.float32(c / math.sqrt(head_dimension))
+
 
 # A layer's matrices are named blk.<layer>.<kind>.weight, with <layer> in decimal and no leading
-# zero. Each kind maps to the norm of the same layer whose output it reads, and to the constant that
-# is multiplied in with that norm's gains. None: the matrix reads no norm.
+# zero. Each kind maps to the norm of the same layer whose output it reads, and to which of the two
+# constants is multiplied in with that norm's gains: "query" for c_q (the query matrix carries the
+# attention scale), "norm" for c_0. None: the matrix reads no norm.
 LAYER_MATRICES = {
-    "attn_q": ("attn_norm", QUERY_CONSTANT),
-    "attn_k": ("attn_norm", NORM_CONSTANT),
-    "attn_v": ("attn_norm", NORM_CONSTANT),
+    "attn_q": ("attn_norm", "query"),
+    "attn_k": ("attn_norm", "norm"),
+    "attn_v": ("attn_norm", "norm"),
     "attn_output": None,
-    "ffn_gate": ("ffn_norm", NORM_CONSTANT),
-    "ffn_up": ("ffn_norm", NORM_CONSTANT),
+    "ffn_gate": ("ffn_norm", "norm"),
+    "ffn_up": ("ffn_norm", "norm"),
     "ffn_down": None,
-    "ffn_gate_inp": ("ffn_norm", NORM_CONSTANT),
-    "ffn_gate_shexp": ("ffn_norm", NORM_CONSTANT),
-    "ffn_up_shexp": ("ffn_norm", NORM_CONSTANT),
+    "ffn_gate_inp": ("ffn_norm", "norm"),
+    "ffn_gate_shexp": ("ffn_norm", "norm"),
+    "ffn_up_shexp": ("ffn_norm", "norm"),
     "ffn_down_shexp": None,
-    "ffn_gate_exps": ("ffn_norm", NORM_CONSTANT),
-    "ffn_up_exps": ("ffn_norm", NORM_CONSTANT),
+    "ffn_gate_exps": ("ffn_norm", "norm"),
+    "ffn_up_exps": ("ffn_norm", "norm"),
     "ffn_down_exps": None,
 }
 LAYER_NORMS = ("attn_norm", "ffn_norm")
@@ -256,7 +278,7 @@ class CheckedReader(GGUFReader):
 
 
 def model_layers(reader):
-    """Check the width and the head dimension in the first shard's metadata, and return the number of layers."""
+    """Read the first shard's metadata, and return (number of layers, width, head dimension)."""
 
     # Messages print <architecture> instead of the architecture's name, as bin/weight_sums does:
     # text from the file can contain terminal control sequences.
@@ -288,14 +310,16 @@ def model_layers(reader):
         raise Fault(
             "metadata", f"the metadata key <architecture>.block_count of the first shard is not a number. {note}"
         )
-    for what, found, only in (("width", width, WIDTH), ("head dimension", head_dimension, HEAD_DIMENSION)):
-        if found != only:
+    # The conversion rule's constants (fold_constants) are a function of the width and head
+    # dimension, so the rule is defined for any positive whole width and head dimension, not only
+    # width 5,120 and head 128. A scale fit (scales/README.md) may still need a narrower range.
+    for what, found in (("width", width), ("head dimension", head_dimension)):
+        if not isinstance(found, (int, float)) or found < 1 or found != int(found):
             raise Fault(
                 "model shape",
-                f"the first shard's metadata give another {what} than {only}. The constants of the conversion rule are "
-                f"valid for the width {WIDTH} and the head dimension {HEAD_DIMENSION} only",
+                f"the first shard's metadata give a {what} that is not a positive whole number. {note}",
             )
-    return layers
+    return layers, int(width), int(head_dimension)
 
 
 def read_shard(path, is_first):
@@ -334,11 +358,13 @@ def read_shard(path, is_first):
 # Which tensors the rule uses.
 
 
-def select(tensors, layers):
+def select(tensors, layers, width, norm_constant, query_constant):
     """Return the list of committed tensors and a dict of the norms by name.
 
     A list entry is (tensor, name of the norm that it reads, constant). The last two are None for a
-    tensor that reads no norm. Tensors with other names are ignored, except that no name may repeat.
+    tensor that reads no norm. norm_constant and query_constant are c_0 and c_q from
+    fold_constants() for this model's width and head dimension; width is its hidden width. Tensors
+    with other names are ignored, except that no name may repeat.
     """
     committed, norms = [], {}
     names = set()
@@ -355,11 +381,12 @@ def select(tensors, layers):
         if tensor.name == HEAD_NORM or kind in LAYER_NORMS:
             norms[tensor.name] = tensor
         elif tensor.name == HEAD:
-            committed.append((tensor, HEAD_NORM, NORM_CONSTANT))
+            committed.append((tensor, HEAD_NORM, norm_constant))
         elif tensor.name == EMBEDDING or (kind in LAYER_MATRICES and LAYER_MATRICES[kind] is None):
             committed.append((tensor, None, None))
         elif kind in LAYER_MATRICES:
-            norm_kind, constant = LAYER_MATRICES[kind]
+            norm_kind, which = LAYER_MATRICES[kind]
+            constant = query_constant if which == "query" else norm_constant
             committed.append((tensor, f"blk.{in_layer[1]}.{norm_kind}.weight", constant))
         else:
             continue
@@ -375,8 +402,8 @@ def select(tensors, layers):
     for norm in norms.values():
         if norm.storage != GGMLQuantizationType.F32:
             raise Fault("norm type", f"the norm {norm.name} is not of type F32")
-        if norm.elements != WIDTH:
-            raise Fault("norm length", f"the norm {norm.name} does not have {WIDTH} elements")
+        if norm.elements != width:
+            raise Fault("norm length", f"the norm {norm.name} does not have {width} elements")
     for tensor, norm, _ in committed:
         if not tensor.dims:
             raise Fault("container", f"{tensor.name} has no dimensions")
@@ -384,8 +411,8 @@ def select(tensors, layers):
             raise Fault("tensor type", f"{tensor.name} is not of type F32, F16, BF16, Q8_0, Q4_K, Q5_K or Q6_K")
         if norm is not None and norm not in norms:
             raise Fault("norm absent", f"{tensor.name} needs {norm}, which is in none of the shards")
-        if norm is not None and tensor.dims[0] != WIDTH:
-            raise Fault("matrix width", f"{tensor.name} reads a norm, but its first dimension is not {WIDTH}")
+        if norm is not None and tensor.dims[0] != width:
+            raise Fault("matrix width", f"{tensor.name} reads a norm, but its first dimension is not {width}")
         if tensor.elements == 0:
             raise Fault("all zero", f"{tensor.name} has no elements")
     return committed, norms
@@ -705,10 +732,11 @@ def main(words):
         check_gguf_py(given.any_gguf_version)
         check_output_path(given.out)
 
-        tensors, layers = read_shard(given.shards[0], True)
+        tensors, (layers, width, head_dimension) = read_shard(given.shards[0], True)
         for path in given.shards[1:]:
             tensors += read_shard(path, False)[0]
-        committed, norms = select(tensors, layers)
+        norm_constant, query_constant = fold_constants(width, head_dimension)
+        committed, norms = select(tensors, layers, width, norm_constant, query_constant)
         say(f"shards: {len(given.shards)}, tensors: {len(tensors)}, committed tensors: {len(committed)}")
 
         lines = convert_all(committed, norms, given.eres, given.workers, given.decode_twice)

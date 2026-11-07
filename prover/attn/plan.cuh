@@ -9,6 +9,7 @@
 // (prover/attn/forward_kernels.cuh) splits a gap below AShD::C into 2^sh f + r, r < 2^sh (sh: the
 // layer's shift), flag d = 0; others have d = 1. Include prover/common/common.h first (u32, u64).
 #pragma once
+#include "common/end_name.h" // name_the_end (M5g)
 #include "common/setting.h"
 #include <algorithm>
 #include <cmath>
@@ -174,6 +175,7 @@ struct APlan {
         printf("attention: the value %d of the parameter file's line S is not accepted: it must be s + 32 * (wd - 3) "
                "with s from 1 to 14 and wd 3 or 4\n",
                p.Sw);
+        name_the_end("attn-s-line"); // serving: p258 end 1 attn-s-line (M5i)
         exit(2);
       }
     }
@@ -197,6 +199,7 @@ struct APlan {
     if (p.H % p.G || p.nT < 4 || p.ls > p.ldh || p.ls < 0 || p.lt + p.S + 1 > 8 * p.wd || (int)sh.size() != p.Lam) {
       printf("attention: this shape is not supported. Required: G divides H, T / B >= 4, 0 <= la - lt <= ldh, lt + S < "
              "8 wd, and one shift for each of the Lam layers\n");
+      name_the_end("attn-shape"); // serving: p258 end 1 attn-shape (M5i)
       exit(2);
     }
     if (p.lmS > p.nD) { // In each plane of `as` a piece of RD or FD has 2^nD cells, read as
@@ -205,6 +208,7 @@ struct APlan {
           "policy: af-shape-lmS: lmS = %d is above lgk + lt + lB = %d, so a column of the matrix as_g would be longer "
           "than one plane of a piece\n",
           p.lmS, p.nD);
+      name_the_end("attn-lms"); // serving: p258 end 1 attn-lms (M5i)
       exit(2);
     }
     for (int s : sh) {
@@ -215,6 +219,7 @@ struct APlan {
                "2^24, and both 0 <= 2^kFM - u0 - nHM <= nHM and 0 <= 2^kFD - u0 - nHD <= nHD must hold; "
                "kFM = %d, kFD = %d\n",
                s, p.kFM, p.kFD);
+        name_the_end("attn-shift"); // serving: p258 end 1 attn-shift (M5i)
         exit(2);
       }
     }

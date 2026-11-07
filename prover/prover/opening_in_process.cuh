@@ -76,11 +76,12 @@ inline int Prover::set_up_the_shared_chain() {
   static_assert(sizeof closer->parameters().configuration == sizeof frame->fixed().configuration.w, "a digest has one length");
   if (memcmp(closer->parameters().configuration, frame->fixed().configuration.w, sizeof frame->fixed().configuration.w)) {
     printf("internal error: the weight table's tree starts from another digest than the one that the chains name as their configuration\n");
+    name_the_end("chain-config"); // serving: p258 end 1 chain-config (kept as a return 4)
     return 4;
   }
   if (!hf::hf_lin_fits(closer->parameters(), lin_setup.sized.S)) {
     printf("policy: plan-words: the shared chain: the lines describe a test on another table than the committed one\n");
-    return 2;
+    return refused("plan-words"); // serving: p258 end 1 plan-words (the printed category)
   }
   lin_setup.shown = hf::hf_shown(closer->parameters(), lin_setup.sized.S.fold.columns);
   lin_setup.plan = frame->proof().chains.at(1).plan;
@@ -90,7 +91,7 @@ inline int Prover::set_up_the_shared_chain() {
   for (int i = 0; i < openings; i++)
     if (opening[i].unit->plan(lin_setup.shown, folded_row_bytes)) {
       printf("the opening: the weight table's keeper refuses the plan's numbers; its own line on standard error gives the reason\n");
-      return 2;
+      return refused("open-plan"); // serving: p258 end 1 open-plan
     }
   return 0;
 }

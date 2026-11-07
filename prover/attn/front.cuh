@@ -10,6 +10,7 @@
 // nothing more per key; source for that aim only, methods not compared: Qu, Guo, Xuan, Liu, Zhang,
 // "Celer: A Lookup Argument for Large-Scale Queries", CRYPTO 2026, ePrint 2026/1453, abstract.
 #pragma once
+#include "common/end_name.h" // name_the_end (M5g)
 #include "common/side_streams.h"
 #include "attn/engines.cuh"
 #include "attn/forward.cuh"
@@ -165,6 +166,7 @@ struct AFront {
       printf("attention: the forward pass supports 32, 64 or 128 channels per head, 64 to 32,768 tokens, tiles of at "
              "least 16 tokens and at most 16 layers per sub-proof; the parameter file's shape is outside these "
              "limits\n");
+      name_the_end("attn-forward-shape"); // serving: p258 end 1 attn-forward-shape (M5i)
       exit(2);
     }
     if (P.dT < std::max(p.lmS, p.lt + p.ldh)) { // lets units share table TA of `as` and TO of ao
@@ -172,12 +174,14 @@ struct AFront {
           "policy: forest-depth-A: a tree of attention's look-up forest has 2^%d keys; it must have at least 2^lmS and "
           "2^(lt + ldh), that is 2^%d\n",
           P.dT, std::max(p.lmS, p.lt + p.ldh));
+      name_the_end("attn-forest-depth"); // serving: p258 end 1 attn-forest-depth (M5i)
       exit(2);
     }
     if (p.iota != 32 + P.dT) {
       printf("policy: policy-iotaA: the line iotaA_0 must be 32 + %d, the log2 of the keys of a tree of attention's "
              "look-up forest; it is %d\n",
              P.dT, p.iota);
+      name_the_end("attn-iota"); // serving: p258 end 1 attn-iota (M5i)
       exit(2);
     }
     NC = (int)P.C.size();
@@ -248,6 +252,7 @@ struct AFront {
       if (FO.plan.dT != P.dT) {
         printf("attention: internal error: the plan has trees of 2^%d keys and the forest has trees of 2^%d\n", P.dT,
                FO.plan.dT);
+        name_the_end("attn-forest-trees"); // serving: p258 end 1 attn-forest-trees (M5i)
         exit(4);
       }
     }
@@ -299,6 +304,7 @@ struct AFront {
       if (s.cnt > gc::WP_PIECES) {
         printf("attention: a lookup call has %d pieces of one segment kind; at most %d are supported\n", s.cnt,
                gc::WP_PIECES);
+        name_the_end("attn-call-pieces"); // serving: p258 end 1 attn-call-pieces (M5i)
         exit(2);
       }
       std::vector<size_t> of;
@@ -791,6 +797,7 @@ struct AFront {
     if ((size_t)(o_ - sends) != nSend) {
       printf("attention: internal error: steps 6 to 22 sent %zu elements, but the layout has %zu\n",
              (size_t)(o_ - sends), nSend);
+      name_the_end("guard"); // serving: p258 end 1 guard (kept as an exit(4))
       exit(4); // not 5: `end_on_exit` (prover/prover/ends.h) reads 5 as a failed CUDA call
     }
     endW();

@@ -124,8 +124,13 @@
 // request is answered "failed": on unchecked weights "failed" would be a bit about the weights at a
 // prompt of the client's choice. When every bounded site (a range test of the forward pass) fits
 // (what that shows and does not: prover/weights_commitment/worst_case.cuh), isk.txt gets the line
-// "ranges <h_par>", which cp_prove requires. Only a call with -test-seed, which no production build
-// has, can omit both: nothing is hidden, and isk.txt says "seed test": only test builds accept it.
+// "ranges <h_par>", which cp_prove requires. The check is only this hiding safeguard; no verifier
+// check rests on it. A call under which nothing is hidden may leave it out, and then writes no line
+// ranges: a call with -test-seed, which no production build has (isk.txt then says "seed test",
+// accepted by test builds only); or, in a production build, a call with -public-weights (isk.txt
+// then says "seed public", and cp_prove given -public-weights starts without the line:
+// Prover::the_ranges_are_guarded()). -worst-case or -worst-case-table forces the check in either
+// case, and a pass then writes the line as usual.
 #include "hash_commitment/hf_commit_derivation_check.cuh" // first: it defines the macro through which the shared headers call it
 #include "common/setting.h"
 #include "weights_commitment/lent_memory.h" // before every header that allocates GPU memory
@@ -583,8 +588,12 @@ static int read_shape(const Opt &O, const std::string &policy_file, PolC &PO, rf
     return 2;
   }
   if (int rc = shape.from_policy(PO)) return rc;
-  // A model with experts (NE > 0) has all four public tables: their digests are required. Only the
-  // first of their lines, tsilu0, is looked for here.
+  // A model with experts (NE > 0) uses all four public tables: their digests are required here. A
+  // dense model (NE 0) uses three (SILU, RoPE, softmax; not the FS/SIG table) and carries their
+  // digests to be the standard parameter form, but is not forced to here: a synthetic dense kit
+  // with no digest lines still commits under a test build, and the standard-form check below
+  // (cp-commit-not-standard) stops a production commit of a dense kit that would get no YES. Only
+  // the first digest line, tsilu0, is looked for here.
   if (!PO.m.count("tsilu0") && PO["NE"] > 0)
     return making::refuse("policy-tables-absent", "the parameter file lacks the lines tsilu0 .. texp" + std::to_string(DW - 1) + ", the digests of the four public tables; no prover "
                                                   "serves such a file (scales/policy_tables.py writes the lines)");
@@ -993,6 +1002,8 @@ static int cp_commit_main(int argc, char **argv) {
   }
 #ifndef SERVING_BUILD
   if (O.from_weights && !O.worst_case) printf("cp_commit: a test's run: the worst-case check is left out, and isk.txt gets no line ranges\n");
+#else
+  if (O.from_weights && !O.worst_case) printf("cp_commit: -public-weights: the worst-case check is left out, and isk.txt gets no line ranges\n");
 #endif
   static PinnedWeights &weights = *new PinnedWeights;
   weights.joined_cut_bytes = O.piece_bytes;
