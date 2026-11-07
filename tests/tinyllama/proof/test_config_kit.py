@@ -122,6 +122,16 @@ def test_kit_is_deterministic_and_copies_the_artifact_scales(tmp_path):
     for removed in ("GH", "UH", "OH", "DH", "VH", "XR", "LR", "LT", "DD", "LH", "SEL", "L3", "CLR", "MR", "G0", "CG"):
         assert all(removed not in call[2:] for call in calls)
     assert values["kFD"] == 14  # computed from u0, dh, the KL attention shift (not the old literal 16)
+    # kFM is derived the same way as kFD (M5l), from u0, dh and the KL shift. The small fixture's
+    # dh 32 / shift 8 shape needs only kFM 13; full TinyLlama (dh 64, shift 7) needs 14. Either way
+    # the old hard-coded literal 15 is wrong -- 2^15 is above u0 + 2 nHM, so the prover's nFM/nHM
+    # bound rejects it (DIAG-M5K-attn-shift).
+    expected_kfm = config_kit._kfm(
+        {"S": contract.S, "rx": contract.RX, "dh": KIT_DIMS.DH, "kl_rows": [KL_ROW] * KIT_DIMS.L}
+    )
+    assert expected_kfm == 13
+    assert values["kFM"] == expected_kfm
+    assert values["kFM"] != 15
 
     call_a = [line.split() for line in lines if line.startswith("callA ")]
     assert call_a == [
@@ -148,6 +158,12 @@ def test_kit_is_deterministic_and_copies_the_artifact_scales(tmp_path):
     assert data + random_entries < (1 << log_n)
     assert block_log >= (KIT_DIMS.V - 1).bit_length()
     assert _table_rule_errors(table, values) == []
+
+
+def test_kfm_matches_the_full_tinyllama_shape():
+    # Full TinyLlama is dh 64 at attention shift 7 (row word 11). u0 + nHM <= 2^kFM <= u0 + 2 nHM
+    # is first satisfied at k 14, so kFM is 14 here -- below the old hard-coded 15.
+    assert config_kit._kfm({"S": 12, "rx": 8, "dh": 64, "kl_rows": [[0] * 11 + [7]]}) == 14
 
 
 def test_kit_at_lt_10_and_wrong_artifact_id(tmp_path):

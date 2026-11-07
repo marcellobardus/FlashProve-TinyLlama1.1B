@@ -309,6 +309,29 @@ def _kfd(values):
     raise KitError("no kFD in 8 .. 16 fits the softmax table (u0 %d) at the attention shifts %s" % (u0, sorted(shifts)))
 
 
+def _nhm(smax, sh):
+    """The number of high-digit entries of the softmax product container for an attention shift sh,
+    as the prover's shd() in prover/attn/plan.cuh computes it (the 2 Smax term; nHD uses 4 Smax)."""
+    rho = 65536 - (1 << sh)
+    return (2 * smax + rho) // rho
+
+
+def _kfm(values):
+    """kFM: log2 of the rows of the softmax product container (line kFM). Analogous to kFD, the
+    container holds u0 high entries plus nHM low ones, and the prover's nFM/nHM bound in
+    prover/attn/plan.cuh requires u0 + nHM <= 2^kFM <= u0 + 2 nHM for every attention shift in
+    KL.bin. The verifier currently only hashes kFM (no formula reads it), so the kit must get it
+    right; the former hard-coded 15 only fit Maverick's shape."""
+    u0 = _softmax_length(values["S"], values["rx"])
+    smax = values["dh"] * CLAMP * CLAMP
+    shifts = {row[11] for row in values["kl_rows"]}
+    for kfm in range(8, 17):
+        rows = 1 << kfm
+        if all(rows >= u0 + _nhm(smax, sh) and rows - u0 - _nhm(smax, sh) <= _nhm(smax, sh) for sh in shifts):
+            return kfm
+    raise KitError("no kFM in 8 .. 16 fits the softmax table (u0 %d) at the attention shifts %s" % (u0, sorted(shifts)))
+
+
 def _dense_calls(forms):
     """The layer sub-proof's ``call`` lines for a dense model with these digit forms, each a tuple
     (name, kind, segments). It covers exactly the segments the verifier expects: the base R16
@@ -662,7 +685,7 @@ def build_policy(values, kl, lt):
             "lB %d" % values["lB"],
             "S %d" % values["S"],
             "rx %d" % values["rx"],
-            "kFM 15",
+            "kFM %d" % _kfm(values),
             "kFD %d" % _kfd(values),
             "lmS %d" % lm["lmS"],
             "NAs %d" % lm["NAs"],
