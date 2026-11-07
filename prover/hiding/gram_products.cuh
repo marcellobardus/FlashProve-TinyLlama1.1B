@@ -362,6 +362,7 @@ __global__ void k_sum(const T *__restrict__ Gc, int nchunks, T *__restrict__ G, 
     if (s_ != CUBLAS_STATUS_SUCCESS) {                                                                                 \
       printf("cublasLt: status %d at %s:%d\n", (int)s_, __FILE__, __LINE__);                                           \
       fflush(stdout);                                                                                                  \
+      name_the_end("cublaslt-product"); /* only product() uses LT_CK: a serving build's last line */                  \
       exit(1);                                                                                                         \
     }                                                                                                                  \
   } while (0)
@@ -438,6 +439,7 @@ static inline void product(const i8 *A, const i8 *B, int *C, int m, int n, int k
       if (found != CUBLAS_STATUS_SUCCESS || got < 1 || first.state != CUBLAS_STATUS_SUCCESS || first.workspaceSize) {
         printf("cublasLt has no algorithm for signed bytes at m %d n %d k %d batch %d ld %zu\n", m, n, k, batch, ld);
         fflush(stdout);
+        name_the_end("cublaslt-product"); // same product category as the LT_CK failures above
         exit(1);
       }
       p.algo = first.algo;
@@ -704,7 +706,8 @@ static inline void set_up() {
   std::lock_guard<std::mutex> l(g_lib.m);
   if (g_lib.h) return;
   // Same check as LT_CK, but this startup handle creation is named for a serving build's last line.
-  // Only this make_tables-time failure is cublaslt-start; later product() LT_CK failures stay unnamed.
+  // This make_tables-time failure is cublaslt-start; later product() failures (LT_CK and the
+  // no-algorithm exit) are cublaslt-product: a distinct fixed name, not relabelled as the start.
   const cublasStatus_t s_ = cublasLtCreate(&g_lib.h);
   if (s_ != CUBLAS_STATUS_SUCCESS) {
     printf("cublasLt: status %d at %s:%d\n", (int)s_, __FILE__, __LINE__);

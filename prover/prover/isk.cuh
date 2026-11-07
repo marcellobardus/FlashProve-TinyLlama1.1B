@@ -506,6 +506,7 @@ inline int Prover::read_the_counts() {
     a_leaf_bears = t.bears, a_batch_counts = t.a_batch;
     if (!a_batch_counts || a_batch_counts != lin_setup.sized.S.fold.columns) {
       printf("internal error: the frame's number of columns that a batch shows is not the shared chain's\n");
+      name_the_end("batch-columns"); // serving: p258 end 1 batch-columns (kept as a return 4)
       return 4;
     }
   }
@@ -665,6 +666,7 @@ inline End Prover::begin_the_batch_on_a_leaf() {
     for (blk::u64 x; read_off && !words.at_end();) read_off = words.get_u64(x), S.push_back(x);
     if (!read_off || S.empty()) {
       printf("internal error: a stored table's name is not two digests and whole words of shape\n");
+      name_the_end("table-name"); // serving: p258 end 1 table-name (kept as an exit(4), at the batch's start)
       exit(4);
     }
     blk::CoinKey seed = blk::coin_key_from_bytes(isk_seed), making = coin_keys::copy_table_key(seed, k, fresh, c, S);
@@ -857,6 +859,7 @@ inline End Prover::begin_the_batch_in_the_library() {
       blk::public_bytes(by_the_file, named_by_the_entry), blk::public_bytes(by_the_keeper, mine.table);
       if (by_the_file.bytes() != by_the_keeper.bytes()) {
         printf("internal error: the keeper names the stored copy of leaf %u otherwise than the copy's entry does\n", batch.leaf);
+        name_the_end("leaf-name"); // serving: p258 end 1 leaf-name (kept as an exit(4), at the batch's start)
         exit(4);
       }
     }
@@ -888,6 +891,7 @@ inline End Prover::begin_the_batch_in_the_library() {
   }
   if (r) {
     printf("internal error: the opening library's batch_begin returned %d\n", r);
+    name_the_end("leaf-begin"); // serving: p258 end 1 leaf-begin (kept as an exit(4), at the batch's start)
     exit(4);
   }
   return End::None;

@@ -136,6 +136,7 @@ static inline void gemm_tn(cublasHandle_t handle, int m, int n, int k, const int
     printf("GPU error: the cuBLAS int8 matrix multiply failed with status %d (m %d k %d lda %zu ldb %zu ldc %zu); the "
            "program stops\n",
            (int)status, m, k, lda, ldb, ldc);
+    name_the_end("cublas-product"); // the product (not cublasCreate): a serving build's last line; n is not in the name
     exit(1);
   }
 }

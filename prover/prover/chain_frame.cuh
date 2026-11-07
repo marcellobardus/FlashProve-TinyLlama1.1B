@@ -86,6 +86,7 @@ inline int Prover::chain_make() {
     for (int mu = 0; mu < HT.NM; mu++)
       if (!HT.cls[mu] && HT.shr[mu] != 0 && n-- == 0) return std::make_pair(owner_link, "M" + std::to_string(mu));
     printf("internal error: the chain: a link has fewer border matrices than later links read from it\n");
+    name_the_end("chain-border"); // serving: p258 end 1 chain-border (kept as an exit(4))
     exit(4);
   };
   for (int g = 0; g < NGr; g++) {

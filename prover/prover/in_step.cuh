@@ -106,6 +106,7 @@ inline int Prover::set_up_the_seats() {
     printf("internal error: %d requests at a time (1 to %d are supported) with %d state buffers, in batches of %d (1 "
            "to %d)\n",
            args.in_step, SLOTS_IN_STEP_MOST, seats, args.batch, SLOTS_MOST);
+    name_the_end("seat-count"); // serving: p258 end 1 seat-count (kept as a return 4)
     return 4;
   }
   plan_member_state(seats);
