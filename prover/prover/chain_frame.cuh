@@ -106,7 +106,7 @@ inline int Prover::chain_make() {
   // There is no default layout; prover/tools/pack_layout.py --arrays makes a file from those lines.
   if (!layout_file) {
     printf("policy: plan-layout: %s: there is no layout file\n", layout_beside(args.policy).c_str());
-    return 2;
+    return refused("plan-layout"); // serving: p258 end 1 plan-layout
   }
   // configure() derives codes, numbers of positions, the last proximity test's stages and the round
   // plans of a proof's three hash chains. chain_link_plan adds the rounds after each commit point.
@@ -144,11 +144,13 @@ inline int Prover::chain_make() {
     // chain_shapes() has already labelled its own rejections "plan-layout: " or "plan-words: ".
     const bool labelled = frame->refused().rfind("plan-layout: ", 0) == 0 || frame->refused().rfind("plan-words: ", 0) == 0;
     printf(labelled ? "policy: %s\n" : "policy: plan-words: %s\n", frame->refused().c_str());
+    // serving: p258 end 1 plan-layout for a "plan-layout: " rejection, else plan-words (the printed category)
+    name_the_end(frame->refused().rfind("plan-layout: ", 0) == 0 ? "plan-layout" : "plan-words");
     return 2;
   }
   if (const char *fault = chain.settle(frame->sized().proof_codes, frame->sized().request)) {
     printf("policy: plan-layout: %s: %s\n", layout_beside(args.policy).c_str(), fault);
-    return 2;
+    return refused("plan-layout"); // serving: p258 end 1 plan-layout
   }
   size_t rows_F = 0, rows_E = 0, blocks = 0;
   for (const blk::ReqLink &l : chain.fixed.shape.link)

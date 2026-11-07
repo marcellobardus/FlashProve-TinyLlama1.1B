@@ -174,6 +174,7 @@
 //   Memory Prefetching", NVIDIA Technical Blog, Mar 23, 2022,
 //   https://developer.nvidia.com/blog/boosting-application-performance-with-gpu-memory-prefetching/
 #pragma once
+#include "common/end_name.h"
 #include <cublasLt.h>
 #include <map>
 #include <mutex>
@@ -702,6 +703,14 @@ __global__ void __launch_bounds__(256)
 static inline void set_up() {
   std::lock_guard<std::mutex> l(g_lib.m);
   if (g_lib.h) return;
-  LT_CK(cublasLtCreate(&g_lib.h));
+  // Same check as LT_CK, but this startup handle creation is named for a serving build's last line.
+  // Only this make_tables-time failure is cublaslt-start; later product() LT_CK failures stay unnamed.
+  const cublasStatus_t s_ = cublasLtCreate(&g_lib.h);
+  if (s_ != CUBLAS_STATUS_SUCCESS) {
+    printf("cublasLt: status %d at %s:%d\n", (int)s_, __FILE__, __LINE__);
+    fflush(stdout);
+    name_the_end("cublaslt-start");
+    exit(1);
+  }
 }
 } // namespace grm

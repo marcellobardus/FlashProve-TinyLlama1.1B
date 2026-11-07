@@ -134,7 +134,7 @@ inline int Prover::g_setup_layout(int g) {
   }
   if ((int)L.call.size() != NC) {
     printf("internal error: the layout has a different number of calls from the parameter file\n");
-    return 2;
+    return refused("layout-calls"); // serving: p258 end 1 layout-calls
   }
   return 0;
 }
@@ -191,18 +191,18 @@ inline int Prover::g_setup_matrices(int g) {
     if (layer_forest.dT < la) {
       printf("policy: a tree of a layer sub-proof's lookups must have at least 2^la keys; raise nmin "
              "[forest-depth-G]\n");
-      return 2;
+      return refused("forest-depth-G"); // serving: p258 end 1 forest-depth-G
     }
     if (lmb < 5 || lmb > layer_forest.kT + 5) {
       printf("policy: the line lmb must be from 5 to %d [forest-planes]\n", layer_forest.kT + 5);
-      return 2;
+      return refused("forest-planes"); // serving: p258 end 1 forest-planes
     }
     for (int c = 0; c < NC; c++)
       if (io[c] != layer_forest.iota[c]) {
         printf("policy: the line iota_%d must be %d: log2 of the call's keys, %d, minus log2 of a tree's keys, %d "
                "[shape-call]\n",
                c, layer_forest.iota[c], K.n[c], layer_forest.dT);
-        return 2;
+        return refused("shape-call"); // serving: p258 end 1 shape-call
       }
   }
   // Matrix b: bit j of the multiplicity of row t of call c's table is byte (c * 2^kT + t) * 32 + j,
@@ -224,7 +224,7 @@ inline int Prover::g_setup_matrices(int g) {
   K.NR = (int)K.M.size();
   if (K.xg.first != iXG || K.xn.first != iXN) {
     printf("internal error: the list numbers of xn and xg do not match the expected indices iXN and iXG\n");
-    return 2;
+    return refused("border-index"); // serving: p258 end 1 border-index
   }
   K.nWT = 0;
   for (int kd : kinds) {
@@ -237,12 +237,12 @@ inline int Prover::g_setup_matrices(int g) {
       printf("internal error: the weight source holds a different number of cells of kind %s from what the prover "
              "expects\n",
              kn.c_str());
-      return 2;
+      return refused("cells-number"); // serving: p258 end 1 cells-number
     }
 
     if (policy["wb_" + kn] != 13) {
       printf("policy: the line wb_%s must be 13\n", kn.c_str());
-      return 2;
+      return refused("policy-weight-kind"); // serving: p258 end 1 policy-weight-kind
     }
     w.buf = slab;
     w.lm = LM{-1, (int)parts_of_kind(kd)};

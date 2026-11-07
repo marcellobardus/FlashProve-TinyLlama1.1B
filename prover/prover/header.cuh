@@ -80,7 +80,7 @@ inline int Prover::build_header() {
       tw[j] = Ts[j] + 4096;
     }
     earlier_hash_h_digest(o, 72, tw.data(), 65536);
-    if (!table_fits("tsilu", "silu", o)) return 2;
+    if (!table_fits("tsilu", "silu", o)) return refused("table-digest"); // serving: p258 end 1 table-digest
     hd.insert(hd.end(), o, o + DW);
   }
   if (mo) {
@@ -90,7 +90,7 @@ inline int Prover::build_header() {
       tw[j] = FSw[j];
     }
     earlier_hash_h_digest(o, 72, tw.data(), 65536);
-    if (!table_fits("tsig", "sigmoid", o)) return 2;
+    if (!table_fits("tsig", "sigmoid", o)) return refused("table-digest"); // serving: p258 end 1 table-digest
     hd.insert(hd.end(), o, o + DW);
   } else {
     hd.insert(hd.end(), DW, 0u);
@@ -108,7 +108,7 @@ inline int Prover::build_header() {
     }
     u32 o[DW];
     earlier_hash_h_digest(o, 72, tw.data(), tw.size());
-    if (!table_fits("trope", "rope", o)) return 2;
+    if (!table_fits("trope", "rope", o)) return refused("table-digest"); // serving: p258 end 1 table-digest
     hd.insert(hd.end(), o, o + DW);
   }
   {
@@ -121,7 +121,7 @@ inline int Prover::build_header() {
     std::vector<u32> tw(Te.begin(), Te.end());
     u32 o[DW];
     earlier_hash_h_digest(o, 72, tw.data(), tw.size());
-    if (!table_fits("texp", "exp", o)) return 2;
+    if (!table_fits("texp", "exp", o)) return refused("table-digest"); // serving: p258 end 1 table-digest
     hd.insert(hd.end(), o, o + DW);
     std::vector<u32> cw((policy.callsA.size() + 3) / 4, 0);
     for (size_t i = 0; i < policy.callsA.size(); i++) {
