@@ -1,0 +1,5 @@
+version 825374792
+M 1
+keep 7
+weights /workspace/weights
+seed public

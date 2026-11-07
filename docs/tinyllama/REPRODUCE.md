@@ -1,5 +1,7 @@
 # Reproduce
 
+Recorded CPU-only verification: [TL-INT-1 P0 T=64 M5m YES package](recorded/p0-tl-int-1-t64/README.md).
+
 ## RunPod pod
 
 Heavy work (download, conversion, calibration, model-dependent tests, quality evaluation) runs on a RunPod CPU
