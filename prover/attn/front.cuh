@@ -791,6 +791,7 @@ struct AFront {
     if ((size_t)(o_ - sends) != nSend) {
       printf("attention: internal error: steps 6 to 22 sent %zu elements, but the layout has %zu\n",
              (size_t)(o_ - sends), nSend);
+      name_the_end("guard"); // serving: p258 end 1 guard (kept as an exit(4))
       exit(4); // not 5: `end_on_exit` (prover/prover/ends.h) reads 5 as a failed CUDA call
     }
     endW();

@@ -551,6 +551,7 @@ private:
       if (!joined[c]) {
         printf("attention: internal error: af-unclosed-call: lookup call %s has not entered the join\n",
                A.P.C[c].name.c_str());
+        name_the_end("af-unclosed-call"); // serving: p258 end 1 af-unclosed-call (kept as an exit(4))
         exit(4);
       }
     W.lin(forest_join(A.FO, forest, KF));
@@ -832,7 +833,10 @@ public:
     door.host_words = ch::host.blob();
     S.slot_pads_agree(MSG + NSM, door.ns); // the same comparison after their last use, and then
     ch::masking_pads_hold(MSG + NSM, door.ns); // by a second implementation [own-test-slot-pads]
-    if (hd::close(door, tr, "attention sub-proof", (int)gid)) exit(4);
+    if (hd::close(door, tr, "attention sub-proof", (int)gid)) {
+      name_the_end("guard"); // the layer sub-proof's close reaches the same name through road_is_broken
+      exit(4);
+    }
     assemble();
     kA_keep<<<1, 1>>>(errK, A.err, err, errc);
   }

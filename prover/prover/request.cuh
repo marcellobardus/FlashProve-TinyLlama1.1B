@@ -142,6 +142,7 @@ inline void Prover::begin_request(Slot &s) {
     printf("internal error: a slot holds %zu words, but a request under this parameter file has %d tokens and two "
            "positions r < e <= %d\n",
            s.tokens.size(), NT, NT);
+    name_the_end("guard"); // an internal re-check of a request already validated at its reading; serving: p258 end 1 guard
     exit(4);
   }
   rep = s.attempt;

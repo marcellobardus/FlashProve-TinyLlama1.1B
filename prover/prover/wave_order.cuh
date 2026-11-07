@@ -38,6 +38,7 @@ static inline int folds_behind(int n) { return n > 1 ? n - 2 : 0; }
 inline int prove_wave(Prover &P, const Wave &w) {
   if (!w.batch || w.first < 0 || w.n < 1 || w.n > P.args.in_step || w.first + w.n > w.batch->B) {
     printf("internal error: invalid pass: %d slots starting at slot %d\n", w.n, w.first);
+    name_the_end("wave-pass"); // serving: p258 end 1 wave-pass (kept as an exit(4))
     exit(4);
   }
   std::vector<Slot *> at_place;

@@ -143,6 +143,7 @@ static inline void raise_what_a_test_asks(const Slot &s, const char *where, int 
 inline void Prover::take_the_seat(Slot &s, int place) {
   if (place < 0 || place >= seats) {
     printf("internal error: slot %d was given state buffer %d of %d\n", s.j, place, seats);
+    name_the_end("seat-place"); // serving: p258 end 1 seat-place (kept as an exit(4))
     exit(4);
   }
   chain.enter(place);
@@ -158,6 +159,7 @@ inline void Prover::leave_the_seat(Slot &s) {
 
 // Exits on an internal error, such as a failed check of the plan. Meant to depend on no request.
 [[noreturn]] static inline void road_is_broken(ChainHost &chain, int rc) {
+  name_the_end("guard"); // a fallback: a step that already named the end keeps it (first name wins)
   chain.wipe_the_wave();
   exit(rc);
 }
