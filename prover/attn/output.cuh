@@ -65,7 +65,7 @@ struct AOutput {
       printf("attention: the forward pass supports 32, 64 or 128 channels per head, 64 to 32,768 tokens, tiles of at "
              "least 16 tokens and at most 16 query heads per key-value head; the requested shape is outside these "
              "limits\n");
-      name_the_end("attn-setup"); // serving: p258 end 1 attn-setup (M5g)
+      name_the_end("attn-output-shape"); // serving: p258 end 1 attn-output-shape (M5i)
       exit(2);
     }
     const size_t nr = (size_t)H * p.T;
