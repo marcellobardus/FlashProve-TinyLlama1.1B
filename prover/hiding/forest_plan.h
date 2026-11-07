@@ -15,6 +15,7 @@
 // Forest (prover/hiding/forest.cuh), the engine, sends one element per message slot. In order: the
 // tie of the two sides' roots | v key layers | d table layers | table leaves | bits are 0 or 1.
 #pragma once
+#include "common/end_name.h" // name_the_end (M5g)
 #include <algorithm>
 #include <numeric>
 #include <utility>
@@ -70,6 +71,7 @@ inline ForestPlan forest_plan(const std::vector<ForestCall> &calls, int lidb) {
   auto refuse = [](const char *what, int number) {
     printf("look-up forest: rejected: %s (%d)\n", what, number);
     fflush(stdout);
+    name_the_end("forest-plan"); // serving: p258 end 1 forest-plan (M5g)
     exit(2);
   };
   p.NC = (int)calls.size();
@@ -136,6 +138,7 @@ inline std::vector<size_t> forest_padded_from(int dT, int iota, const ForestRuns
     if (pub.size() != from.size() || places[b] != pub[b]) {
       printf("internal error: look-up forest: a call's runs of padding places do not add up to its numbers of padding keys\n");
       fflush(stdout);
+      name_the_end("forest-plan"); // serving: p258 end 1 forest-plan (M5g)
       exit(1);
     }
   return from;
@@ -177,6 +180,7 @@ inline Table table_of(const ForestCall &c) {
   if (all >> 61) { // else forest_keys.cuh's sums of row values can overflow: an honest proof fails
     printf("look-up forest: rejected: a table has a row value of 2^61 or more\n");
     fflush(stdout);
+    name_the_end("forest-plan"); // serving: p258 end 1 forest-plan (M5g)
     exit(2);
   }
   t.bits = 1;

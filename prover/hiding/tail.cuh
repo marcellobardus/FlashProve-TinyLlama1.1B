@@ -9,6 +9,7 @@
    the check itself. Include this file after prover/hiding/product_test.cuh,
    prover/hiding/trees.cuh and the helpers GSL, `nblk` and `k_eq` of prover/prover/base.cuh. */
 #pragma once
+#include "common/end_name.h" // name_the_end (M5g)
 #include "common/element_from_hash.h"
 #include "hiding/forest.cuh"
 #include "hiding/late.cuh"
@@ -93,6 +94,7 @@ struct TailPieces {
       if (r0 % Rp) {
         printf("internal error: smallness test: a block of %zu rows begins at row %zu, which is "
                "not a multiple of its size\n", Rp, r0);
+        name_the_end("tail-setup"); // serving: p258 end 1 tail-setup (M5g)
         exit(2);
       }
       b.push_back({r0, Rp});

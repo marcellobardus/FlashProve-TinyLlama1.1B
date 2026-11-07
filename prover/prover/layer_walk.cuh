@@ -7,6 +7,7 @@
 // verifier's order, in W, its hw::Walk (prover/hiding/walk.cuh), as jobs that each proof evaluates.
 // Names: `fork` is a sub-proof, `slot` a sent scalar's number, `tail` the approximate range check.
 #pragma once
+#include "common/end_name.h" // name_the_end (M5g)
 #include "prover/prover.h"
 
 // Returns the offset in U3, the committed evaluation tables, of table U at point pt; exits if none.
@@ -14,6 +15,7 @@ inline size_t Prover::off3(const char *U, const std::string &pt) {
   auto it = OFF.find(std::string(U) + "|" + pt);
   if (it == OFF.end()) {
     printf("internal error: hiding has no table %s at point %s\n", U, pt.c_str());
+    name_the_end("walk-plan"); // serving: p258 end 1 walk-plan (M5g)
     exit(2);
   }
   return it->second;
@@ -151,6 +153,7 @@ inline int Prover::g_walk_relations(int g) {
     }
     if (o != K.nW) {
       printf("internal error: the offsets of the tables do not add up to the planned number of table elements\n");
+      name_the_end("walk-plan"); // serving: p258 end 1 walk-plan (M5g)
       return 2;
     }
   }
@@ -569,6 +572,7 @@ inline int Prover::g_walk_relations(int g) {
     if (n == "G0") return hSx(sg, "UF", Z, gw_g0, lam);
     if (n == "CG") return hSx(sg, "UF", Z, L.t[X_gh], lam) + hSx(sg, "UF", Z, gw_gc, lam) * Sy(h2(28));
     printf("internal error: hiding has no line formula for segment %s\n", sg);
+    name_the_end("walk-plan"); // serving: p258 end 1 walk-plan (M5g)
     exit(2);
   };
   auto gw_moeSeg = [](const std::string &n) {
@@ -702,6 +706,7 @@ inline int Prover::g_walk_stack(int g) {
           if (w.lm.n != 1) {
             printf("internal error: weight kind %d is split into %d parts, but the direct pass needs it in one part\n",
                    kind, w.lm.n);
+            name_the_end("walk-plan"); // serving: p258 end 1 walk-plan (M5g)
             exit(2);
           }
           if (const i8 *cells = weights->cells_in_place(kind, g)) return cells;
@@ -710,6 +715,7 @@ inline int Prover::g_walk_stack(int g) {
         }
       }
       printf("internal error: no weight of kind %d was found for the direct pass\n", kind);
+      name_the_end("walk-plan"); // serving: p258 end 1 walk-plan (M5g)
       exit(2);
     };
   }
@@ -751,6 +757,7 @@ inline int Prover::g_walk_stack(int g) {
     printf("internal error: the stack plan does not match the hiding plan: lam_s %d vs %d, shown values %zu vs %zu, NV %d vs "
            "%d\n",
            Q.GS.lam_s, Q.lamS, Q.GS.nshown(), Q.nEndS, Q.GS.NV, Q.NV);
+    name_the_end("walk-plan"); // serving: p258 end 1 walk-plan (M5g)
     return 4;
   }
   Q.GS.walk10(W, gw_RS, gClaim);

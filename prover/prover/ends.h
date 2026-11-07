@@ -351,6 +351,10 @@ static void arm_ends() {
       code = End::HostMemory;
     } catch (...) {
     }
+    // M5g: an uncaught exception that is not bad_alloc reaches stop() as Usage with no name and
+    // prints a bare `p258 end 1`. Name it so the operator sees which class of end it was. First
+    // name wins, so a real name a self-check set before the throw stays.
+    if (code == End::Usage) name_the_end("uncaught-exception");
     stop(code);
   });
   struct sigaction ask {};

@@ -8,6 +8,7 @@
 #pragma once
 // T is an element of the cubic extension of the field of size p = 2^64 - 2^32 + 1 (`FIELD_P`); F is its
 // arithmetic. T_ or NT is the number of tokens. A limb is a base-256 digit from -128 to 127.
+#include "common/end_name.h" // name_the_end (M5g)
 #include "prover/fork_memory.h"
 
 #include "common/numa_pin.h"
@@ -169,6 +170,7 @@ static const u32 *treehash(const u32 *in, size_t n) {
             "internal error: the tree hash of %zu words was requested; it is defined for %d words or more; the program "
             "ends\n",
             n, DW);
+    name_the_end("guard"); // serving: p258 end 1 guard (M5g: an internal-consistency stop)
     exit(2);
   }
   int p = 0;
